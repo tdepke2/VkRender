@@ -50,92 +50,12 @@ if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
     message("")
 endif()
 
-include(FetchContent)
+include(cmake/FetchContentArchive.cmake)
 #set(FETCHCONTENT_QUIET OFF)
 
 # Import spdlog for logging utilities.
-#message(STATUS "Fetching sources for spdlog...")
-#FetchContent_Declare(
-#    spdlog
-#    GIT_REPOSITORY https://github.com/gabime/spdlog.git
-#    GIT_TAG v1.16.0
-#)
-#FetchContent_MakeAvailable(spdlog)
-#message("")
-
-include(CMakePrintHelpers)
-
-# FIXME: still need a cache option to force online download
-# we should also put this in a cmake helper file
-function(FetchContentAdvanced)
-    message(STATUS "Called FetchContentAdvanced with: ${ARGN}")
-    cmake_parse_arguments(PARSED_ARGS
-        "" "GIT_TAG;URL_MD5" "" ${ARGN}
-    )
-    cmake_print_variables(
-        PARSED_ARGS_GIT_TAG
-        PARSED_ARGS_URL_MD5
-        PARSED_ARGS_UNPARSED_ARGUMENTS
-        PARSED_ARGS_KEYWORDS_MISSING_VALUES
-    )
-    list(GET ARGN 0 PARSED_ARGS_NAME)
-
-    if (DEFINED PARSED_ARGS_GIT_TAG)
-        string(SUBSTRING "${PARSED_ARGS_GIT_TAG}" 0 16 PARSED_ARGS_VERSION)
-    elseif (DEFINED PARSED_ARGS_URL_MD5)
-        string(SUBSTRING "${PARSED_ARGS_URL_MD5}" 0 16 PARSED_ARGS_VERSION)
-    else()
-        message(FATAL_ERROR "FetchContentAdvanced() for ${PARSED_ARGS_NAME} cannot determine version.")
-    endif()
-
-    set(ARCHIVE_FILENAME "${PROJECT_SOURCE_DIR}/extern/${PARSED_ARGS_NAME}-${PARSED_ARGS_VERSION}.zip")
-    cmake_print_variables(ARCHIVE_FILENAME)
-    if (EXISTS "${ARCHIVE_FILENAME}")
-        message(STATUS "Archive found")
-        cmake_print_variables(FETCHCONTENT_BASE_DIR)
-        if (NOT EXISTS "${FETCHCONTENT_BASE_DIR}/${PARSED_ARGS_NAME}-src")
-            message(STATUS "Unpacking...")
-            file(MAKE_DIRECTORY "${FETCHCONTENT_BASE_DIR}/${PARSED_ARGS_NAME}-src")
-            execute_process(
-                COMMAND ${CMAKE_COMMAND} -E tar xvf "${ARCHIVE_FILENAME}" --format=zip
-                WORKING_DIRECTORY "${FETCHCONTENT_BASE_DIR}/${PARSED_ARGS_NAME}-src"
-            )
-        else()
-            message(STATUS "Archive already unpacked.")
-        endif()
-        string(TOUPPER "${PARSED_ARGS_NAME}" PARSED_ARGS_NAME_UPPER)
-        set(FETCHCONTENT_SOURCE_DIR_${PARSED_ARGS_NAME_UPPER}
-            "${FETCHCONTENT_BASE_DIR}/${PARSED_ARGS_NAME}-src" CACHE PATH
-            "When not empty, overrides where to find pre-populated content for ${PARSED_ARGS_NAME}"
-        )
-        FetchContent_Declare(${ARGN})
-        FetchContent_MakeAvailable(${PARSED_ARGS_NAME})
-    else()
-        message(STATUS "Archive not found, download it")
-        FetchContent_Declare(${ARGN})
-        FetchContent_MakeAvailable(${PARSED_ARGS_NAME})
-        cmake_print_variables(${PARSED_ARGS_NAME}_SOURCE_DIR)
-
-        #file(ARCHIVE_CREATE
-        #    OUTPUT "${ARCHIVE_FILENAME}"
-        #    PATHS "${${PARSED_ARGS_NAME}_SOURCE_DIR}"
-        #    FORMAT gnutar
-        #    COMPRESSION GZip
-        #    VERBOSE
-        #)
-
-        # CMake 3.18 adds a file(ARCHIVE_CREATE ...) option for making a file archive, but there's not yet an option to set the working directory. This method with execute_process can be used instead.
-        execute_process(
-            COMMAND ${CMAKE_COMMAND} -E tar cvf "${ARCHIVE_FILENAME}" --format=zip "."
-            WORKING_DIRECTORY "${${PARSED_ARGS_NAME}_SOURCE_DIR}"
-        )
-    endif()
-
-endfunction()
-
-# Import spdlog for logging utilities.
 message(STATUS "Fetching sources for spdlog...")
-FetchContentAdvanced(
+FetchContentArchive(
     spdlog
     GIT_REPOSITORY https://github.com/gabime/spdlog.git
     GIT_TAG v1.16.0
