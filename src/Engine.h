@@ -5,8 +5,28 @@
 // FIXME: we should look into precompiled headers instead of doing this, see vk_types.h and corresponding cmake files.
 #include <vulkan/vulkan.h>
 #include <vulkan/vk_enum_string_helper.h>
+#include <spdlog/fmt/bundled/base.h>
+
+#define VK_CHECK(x)                                                     \
+    do {                                                                \
+        VkResult err = x;                                               \
+        if (err) {                                                      \
+            fmt::println("Detected Vulkan error: {}", string_VkResult(err)); \
+            abort();                                                    \
+        }                                                               \
+    } while (0)
 
 struct SDL_Window;
+
+struct FrameData {
+    VkSemaphore _swapchainSemaphore, _renderSemaphore;
+    VkFence _renderFence;
+
+    VkCommandPool _commandPool;
+    VkCommandBuffer _mainCommandBuffer;
+};
+
+constexpr unsigned int FRAME_OVERLAP = 2;
 
 class Engine {
 public:
@@ -22,6 +42,7 @@ private:
     void initCommands();
     void initSyncStructures();
 
+    FrameData& getCurrentFrame() { return _frames[_frameNumber % FRAME_OVERLAP]; };
     void draw();
 
     int _frameNumber {0};
@@ -36,6 +57,8 @@ private:
 
     VkQueue _graphicsQueue;
     uint32_t _graphicsQueueFamily;
+
+    FrameData _frames[FRAME_OVERLAP];
 
     VkSurfaceKHR _surface;
     VkSwapchainKHR _swapchain;
