@@ -50,14 +50,34 @@ if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
     message("")
 endif()
 
+find_package(Vulkan REQUIRED)
+
 include(cmake/FetchContentArchive.cmake)
 #set(FETCHCONTENT_QUIET OFF)
+
+# Import SDL3 for the window system and other utilities.
+message(STATUS "Fetching sources for SDL3...")
+FetchContentArchive(
+    SDL3
+    GIT_REPOSITORY https://github.com/libsdl-org/SDL
+    GIT_TAG release-3.2.26
+)
+message("")
+
+# Import vk-bootstrap for convenient Vulkan initialization.
+message(STATUS "Fetching sources for vk-bootstrap...")
+FetchContentArchive(
+    vk-bootstrap
+    GIT_REPOSITORY https://github.com/charles-lunarg/vk-bootstrap
+    GIT_TAG v1.4.330
+)
+message("")
 
 # Import spdlog for logging utilities.
 message(STATUS "Fetching sources for spdlog...")
 FetchContentArchive(
     spdlog
-    GIT_REPOSITORY https://github.com/gabime/spdlog.git
+    GIT_REPOSITORY https://github.com/gabime/spdlog
     GIT_TAG v1.16.0
 )
 message("")
