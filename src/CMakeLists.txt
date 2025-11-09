@@ -1,7 +1,7 @@
 # Create the main library from all source files.
 add_library(vkr_src
-    test.cpp
-    test.h
+    Engine.cpp
+    Engine.h
 )
 
 # Specify where to find the header files to include.
@@ -10,6 +10,9 @@ target_include_directories(vkr_src PUBLIC .)
 # Link to libraries and set C++ compilation version.
 # FIXME: we may want this to be private instead, so that main (or external program using this lib) doesn't need to link to the internal dependencies.
 target_link_libraries(vkr_src PUBLIC
+    Vulkan::Vulkan
+    SDL3::SDL3
+    vk-bootstrap::vk-bootstrap
     spdlog::spdlog
 )
 vkr_add_cxx_properties(vkr_src)
