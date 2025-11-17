@@ -3,8 +3,10 @@
 #include <vector>
 
 // FIXME: we should look into precompiled headers instead of doing this, see vk_types.h and corresponding cmake files.
-#include <vulkan/vulkan.h>
-#include <vulkan/vk_enum_string_helper.h>
+#define VULKAN_HPP_NO_CONSTRUCTORS
+#include <vulkan/vulkan_raii.hpp>
+#include <vulkan/vk_enum_string_helper.h>    // FIXME: we want vk::to_string() instead
+#include <vk_mem_alloc.h>
 #include <spdlog/fmt/bundled/base.h>
 
 #define VK_CHECK(x)                                                     \
@@ -47,26 +49,27 @@ private:
 
     int _frameNumber {0};
 
-    VkExtent2D _windowExtent{ 1700 , 900 };
-    SDL_Window* _window{ nullptr };
+    vk::Extent2D windowExtent_ = { 1700 , 900 };
+    SDL_Window* window_ = nullptr;
 
-    VkInstance _instance;
-    VkDebugUtilsMessengerEXT _debug_messenger;
-    VkPhysicalDevice _chosenGPU;
-    VkDevice _device;
+    vk::raii::Context context_;
+    vk::raii::Instance instance_ = nullptr;
+    vk::raii::DebugUtilsMessengerEXT debugMessenger_ = nullptr;
+    vk::raii::SurfaceKHR surface_ = nullptr;
+    vk::raii::PhysicalDevice physicalDevice_ = nullptr;
+    vk::raii::Device device_ = nullptr;
 
-    VkQueue _graphicsQueue;
-    uint32_t _graphicsQueueFamily;
+    vk::raii::Queue graphicsQueue_ = nullptr;
+    uint32_t graphicsQueueFamily_;
+
+    vk::raii::SwapchainKHR swapchain_ = nullptr;
+    vk::Format swapchainImageFormat_ = vk::Format::eUndefined;
+    vk::Extent2D swapchainExtent_;
+
+    std::vector<vk::Image> swapchainImages_;
+    std::vector<vk::raii::ImageView> swapchainImageViews_;
 
     FrameData _frames[FRAME_OVERLAP];
-
-    VkSurfaceKHR _surface;
-    VkSwapchainKHR _swapchain;
-    VkFormat _swapchainImageFormat;
-    VkExtent2D _swapchainExtent;
-
-    std::vector<VkImage> _swapchainImages;
-    std::vector<VkImageView> _swapchainImageViews;
 
     bool resize_requested{ false };
     bool freeze_rendering{ false };

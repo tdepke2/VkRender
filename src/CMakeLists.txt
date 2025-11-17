@@ -2,6 +2,7 @@
 add_library(vkr_src
     Engine.cpp
     Engine.h
+    VmaUsage.cpp
 )
 
 # Specify where to find the header files to include.
@@ -13,6 +14,7 @@ target_link_libraries(vkr_src PUBLIC
     Vulkan::Vulkan
     SDL3::SDL3
     vk-bootstrap::vk-bootstrap
+    VulkanMemoryAllocator::VulkanMemoryAllocator
     spdlog::spdlog
 )
 vkr_add_cxx_properties(vkr_src)
