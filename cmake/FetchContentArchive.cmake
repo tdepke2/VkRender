@@ -72,12 +72,17 @@ function(FetchContentArchive)
         FetchContent_Declare(${ARGN})
         FetchContent_MakeAvailable(${PARSED_ARGS_NAME})
 
+        # Usually FetchContent_MakeAvailable() sets ${PARSED_ARGS_NAME}_SOURCE_DIR to point to the source dir, but for some packages this seems to fail. We can get this variable another way using FetchContent_GetProperties().
+        FetchContent_GetProperties(${PARSED_ARGS_NAME}
+            SOURCE_DIR SOURCE_DIR_ACTUAL
+        )
+
         if(NOT FETCHCONTENTARCHIVE_FORCE_DOWNLOAD)
             # Could use cmake_path() for this comparison (introduced in CMake 3.20).
-            if(NOT "${${PARSED_ARGS_NAME}_SOURCE_DIR}" STREQUAL "${SOURCE_DIR_EXPECTED}")
+            if(NOT "${SOURCE_DIR_ACTUAL}" STREQUAL "${SOURCE_DIR_EXPECTED}")
                 message(FATAL_ERROR
                     "FetchContentArchive() for ${PARSED_ARGS_NAME} source dir paths differ:\n"
-                    "${${PARSED_ARGS_NAME}_SOURCE_DIR}\n"
+                    "${SOURCE_DIR_ACTUAL}\n"
                     "${SOURCE_DIR_EXPECTED}"
                 )
             endif()
@@ -88,9 +93,10 @@ function(FetchContentArchive)
 
             # CMake 3.18 adds a file(ARCHIVE_CREATE ...) option for making a file archive, but there's not yet an option to set the working directory.
             # This method with execute_process can be used instead.
+            file(MAKE_DIRECTORY "${PROJECT_SOURCE_DIR}/extern")
             execute_process(
                 COMMAND ${CMAKE_COMMAND} -E tar "c${ARCHIVE_OPTIONS}" "${ARCHIVE_FILENAME}" --format=zip "."
-                WORKING_DIRECTORY "${${PARSED_ARGS_NAME}_SOURCE_DIR}"
+                WORKING_DIRECTORY "${SOURCE_DIR_ACTUAL}"
             )
         endif()
     endif()

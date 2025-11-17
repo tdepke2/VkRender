@@ -50,10 +50,13 @@ if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
     message("")
 endif()
 
+# FIXME: recommended to use FindVulkan.cmake from Khronos instead: https://docs.vulkan.org/tutorial/latest/02_Development_environment.html
 find_package(Vulkan REQUIRED)
 
 include(cmake/FetchContentArchive.cmake)
 #set(FETCHCONTENT_QUIET OFF)
+
+# FIXME: SDL3 has a lot of extra subsystems that are not being used, should disable them.
 
 # Import SDL3 for the window system and other utilities.
 message(STATUS "Fetching sources for SDL3...")
@@ -70,6 +73,15 @@ FetchContentArchive(
     vk-bootstrap
     GIT_REPOSITORY https://github.com/charles-lunarg/vk-bootstrap
     GIT_TAG v1.4.330
+)
+message("")
+
+# Import VulkanMemoryAllocator for Vulkan memory handling.
+message(STATUS "Fetching sources for VulkanMemoryAllocator...")
+FetchContentArchive(
+    VulkanMemoryAllocator
+    GIT_REPOSITORY https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator
+    GIT_TAG v3.3.0
 )
 message("")
 
