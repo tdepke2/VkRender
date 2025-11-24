@@ -14,7 +14,7 @@ target_link_libraries(vkr_src PUBLIC
     Vulkan::Vulkan
     SDL3::SDL3
     vk-bootstrap::vk-bootstrap
-    VulkanMemoryAllocator::VulkanMemoryAllocator
+    GPUOpen::VulkanMemoryAllocator
     spdlog::spdlog
 )
 vkr_add_cxx_properties(vkr_src)
@@ -24,3 +24,8 @@ add_executable(vk_render
 )
 target_link_libraries(vk_render PRIVATE vkr_src)
 vkr_add_cxx_properties(vk_render)
+
+add_shaders(vk_render
+    SOURCES
+    "${PROJECT_SOURCE_DIR}/shaders/gradient.comp"
+)

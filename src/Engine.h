@@ -18,6 +18,20 @@
         }                                                               \
     } while (0)
 
+struct AllocatedImage {
+    vk::Image image;
+    vk::raii::ImageView imageView = nullptr;
+    VmaAllocation allocation;
+    vk::Extent3D imageExtent;
+    vk::Format imageFormat;
+
+    // FIXME: this isn't great. do we want an raii wrapper for vma, or just use std::unique_ptr with custom deletor?
+    void clear(VmaAllocator allocator) {
+        imageView.clear();
+        vmaDestroyImage(allocator, image, allocation);
+    }
+};
+
 struct SDL_Window;
 
 struct FrameData {
@@ -46,6 +60,7 @@ private:
 
     FrameData& getCurrentFrame() { return _frames[_frameNumber % FRAME_OVERLAP]; };
     void draw();
+    void drawBackground(vk::CommandBuffer cmd);
 
     int _frameNumber {0};
 
@@ -62,6 +77,8 @@ private:
     vk::raii::Queue graphicsQueue_ = nullptr;
     uint32_t graphicsQueueFamily_;
 
+    VmaAllocator allocator_;
+
     vk::raii::SwapchainKHR swapchain_ = nullptr;
     vk::Format swapchainImageFormat_ = vk::Format::eUndefined;
     vk::Extent2D swapchainExtent_;
@@ -70,6 +87,9 @@ private:
     std::vector<vk::raii::ImageView> swapchainImageViews_;
 
     FrameData _frames[FRAME_OVERLAP];
+
+    AllocatedImage drawImage_;
+    VkExtent2D _drawExtent;
 
     bool resize_requested{ false };
     bool freeze_rendering{ false };

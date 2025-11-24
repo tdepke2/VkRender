@@ -90,6 +90,40 @@ VkSubmitInfo2 submitInfo(VkCommandBufferSubmitInfo* cmd, VkSemaphoreSubmitInfo* 
     return info;
 }
 
+void copyImageToImage(VkCommandBuffer cmd, VkImage source, VkImage destination, VkExtent2D srcSize, VkExtent2D dstSize)
+{
+    VkImageBlit2 blitRegion{ .sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2, .pNext = nullptr };
+
+    blitRegion.srcOffsets[1].x = srcSize.width;
+    blitRegion.srcOffsets[1].y = srcSize.height;
+    blitRegion.srcOffsets[1].z = 1;
+
+    blitRegion.dstOffsets[1].x = dstSize.width;
+    blitRegion.dstOffsets[1].y = dstSize.height;
+    blitRegion.dstOffsets[1].z = 1;
+
+    blitRegion.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    blitRegion.srcSubresource.baseArrayLayer = 0;
+    blitRegion.srcSubresource.layerCount = 1;
+    blitRegion.srcSubresource.mipLevel = 0;
+
+    blitRegion.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    blitRegion.dstSubresource.baseArrayLayer = 0;
+    blitRegion.dstSubresource.layerCount = 1;
+    blitRegion.dstSubresource.mipLevel = 0;
+
+    VkBlitImageInfo2 blitInfo{ .sType = VK_STRUCTURE_TYPE_BLIT_IMAGE_INFO_2, .pNext = nullptr };
+    blitInfo.dstImage = destination;
+    blitInfo.dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    blitInfo.srcImage = source;
+    blitInfo.srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    blitInfo.filter = VK_FILTER_LINEAR;
+    blitInfo.regionCount = 1;
+    blitInfo.pRegions = &blitRegion;
+
+    vkCmdBlitImage2(cmd, &blitInfo);
+}
+
 }
 
 void Engine::init() {
@@ -154,9 +188,11 @@ void Engine::cleanup() {
         vkDestroySemaphore(*device_ ,_frames[i]._swapchainSemaphore, nullptr);
     }
 
+    drawImage_.clear(allocator_);
     destroySwapchain();
 
     surface_.clear();
+    vmaDestroyAllocator(allocator_);
     device_.clear();//vkDestroyDevice(_device, nullptr);
     physicalDevice_.clear();
     debugMessenger_.clear();//vkb::destroy_debug_utils_messenger(_instance, _debug_messenger);
@@ -220,13 +256,71 @@ void Engine::initVulkan() {
     graphicsQueue_ = vk::raii::Queue(device_, vkbDevice.get_queue(vkb::QueueType::graphics).value());
     graphicsQueueFamily_ = vkbDevice.get_queue_index(vkb::QueueType::graphics).value();
 
-    // FIXME: VMA stuff...
+    // initialize the memory allocator
+    VmaAllocatorCreateInfo allocatorInfo = {};
+    allocatorInfo.physicalDevice = *physicalDevice_;
+    allocatorInfo.device = *device_;
+    allocatorInfo.instance = *instance_;
+    allocatorInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
+    vmaCreateAllocator(&allocatorInfo, &allocator_);
 }
 
 void Engine::initSwapchain() {
     createSwapchain(windowExtent_.width, windowExtent_.height);
 
-    // FIXME: draw image and depth image.
+    //draw image size will match the window
+    vk::Extent3D drawImageExtent = {
+        windowExtent_.width,
+        windowExtent_.height,
+        1
+    };
+
+    //hardcoding the draw format to 32 bit float
+    drawImage_.imageFormat = vk::Format::eR16G16B16A16Sfloat;
+    drawImage_.imageExtent = drawImageExtent;
+
+    vk::ImageUsageFlags drawImageUsages =
+        vk::ImageUsageFlagBits::eTransferSrc |
+        vk::ImageUsageFlagBits::eTransferDst |
+        vk::ImageUsageFlagBits::eStorage |
+        vk::ImageUsageFlagBits::eColorAttachment;
+
+    vk::ImageCreateInfo rimg_info = {
+        .imageType = vk::ImageType::e2D,
+        .format = drawImage_.imageFormat,
+        .extent = drawImage_.imageExtent,
+        .mipLevels = 1,
+        .arrayLayers = 1,
+        .samples = vk::SampleCountFlagBits::e1,
+        .tiling = vk::ImageTiling::eOptimal,
+        .usage = drawImageUsages
+    };
+
+    //for the draw image, we want to allocate it from gpu local memory
+    VmaAllocationCreateInfo rimg_allocinfo = {};
+    rimg_allocinfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+    rimg_allocinfo.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    //allocate and create the image
+    VkImage image = {};
+    vmaCreateImage(allocator_, &(*rimg_info), &rimg_allocinfo, &image, &drawImage_.allocation, nullptr);
+    drawImage_.image = image;
+
+    //build a image-view for the draw image to use for rendering
+    vk::ImageViewCreateInfo rview_info = {
+        .image = drawImage_.image,
+        .viewType = vk::ImageViewType::e2D,
+        .format = drawImage_.imageFormat,
+        .subresourceRange = {
+            .aspectMask = vk::ImageAspectFlagBits::eColor,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        },
+    };
+
+    drawImage_.imageView = device_.createImageView(rview_info);
 }
 
 void Engine::createSwapchain(uint32_t width, uint32_t height) {
@@ -339,24 +433,27 @@ void Engine::draw() {
     cmdBeginInfo.pInheritanceInfo = nullptr;
     cmdBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
+    _drawExtent.width = drawImage_.imageExtent.width;
+    _drawExtent.height = drawImage_.imageExtent.height;
+
     //start the command buffer recording
     VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 
-    //make the swapchain image into writeable mode before rendering
-    transitionImage(cmd, swapchainImages_[swapchainImageIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+    // transition our main draw image into general layout so we can write into it
+    // we will overwrite it all so we dont care about what was the older layout
+    transitionImage(cmd, drawImage_.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 
-    //make a clear-color from frame number. This will flash with a 120 frame period.
-    VkClearColorValue clearValue;
-    float flash = std::abs(std::sin(_frameNumber / 120.f));
-    clearValue = { { 0.0f, 0.0f, flash, 1.0f } };
+    drawBackground(cmd);
 
-    VkImageSubresourceRange clearRange = imageSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT);
+    //transition the draw image and the swapchain image into their correct transfer layouts
+    transitionImage(cmd, drawImage_.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    transitionImage(cmd, swapchainImages_[swapchainImageIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
-    //clear image
-    vkCmdClearColorImage(cmd, swapchainImages_[swapchainImageIndex], VK_IMAGE_LAYOUT_GENERAL, &clearValue, 1, &clearRange);
+    // execute a copy from the draw image into the swapchain
+    copyImageToImage(cmd, drawImage_.image, swapchainImages_[swapchainImageIndex], _drawExtent, swapchainExtent_);
 
-    //make the swapchain image into presentable mode
-    transitionImage(cmd, swapchainImages_[swapchainImageIndex],VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+    // set swapchain image layout to Present so we can show it on the screen
+    transitionImage(cmd, swapchainImages_[swapchainImageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
     //finalize the command buffer (we can no longer add commands, but it can now be executed)
     VK_CHECK(vkEndCommandBuffer(cmd));
@@ -380,10 +477,11 @@ void Engine::draw() {
     // this will put the image we just rendered to into the visible window.
     // we want to wait on the _renderSemaphore for that,
     // as its necessary that drawing commands have finished before the image is displayed to the user
+    VkSwapchainKHR swapchain = *swapchain_;
     VkPresentInfoKHR presentInfo = {};
     presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     presentInfo.pNext = nullptr;
-    presentInfo.pSwapchains = &swapchain_;
+    presentInfo.pSwapchains = &swapchain;
     presentInfo.swapchainCount = 1;
 
     presentInfo.pWaitSemaphores = &getCurrentFrame()._renderSemaphore;
@@ -395,4 +493,16 @@ void Engine::draw() {
 
     //increase the number of frames drawn
     _frameNumber++;
+}
+
+void Engine::drawBackground(vk::CommandBuffer cmd) {
+    //make a clear-color from frame number. This will flash with a 120 frame period.
+    VkClearColorValue clearValue;
+    float flash = std::abs(std::sin(_frameNumber / 120.f));
+    clearValue = { { 0.0f, 0.0f, flash, 1.0f } };
+
+    VkImageSubresourceRange clearRange = imageSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT);
+
+    //clear image
+    vkCmdClearColorImage(cmd, drawImage_.image, VK_IMAGE_LAYOUT_GENERAL, &clearValue, 1, &clearRange);
 }

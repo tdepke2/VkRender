@@ -53,6 +53,50 @@ endif()
 # FIXME: recommended to use FindVulkan.cmake from Khronos instead: https://docs.vulkan.org/tutorial/latest/02_Development_environment.html
 find_package(Vulkan REQUIRED)
 
+find_program(GLSLANG_VALIDATOR "glslangValidator" HINTS $ENV{VULKAN_SDK}/bin REQUIRED)
+
+
+include(CMakePrintHelpers)
+function(add_shaders TARGET_NAME)
+    message(STATUS "add_shaders for ${TARGET_NAME}")
+    cmake_parse_arguments(SHADER
+        "" "" "SOURCES" ${ARGN}
+    )
+    if(NOT DEFINED SHADER_SOURCES)
+        message(FATAL_ERROR "add_shaders() for ${TARGET_NAME} does not have any shaders specified.")
+    endif()
+    foreach(SHADER_SOURCE ${SHADER_SOURCES})
+        get_filename_component(SHADER_SOURCE_FILENAME "${SHADER_SOURCE}" NAME)
+        set(SHADER_SPIRV "${PROJECT_SOURCE_DIR}/shaders/${SHADER_SOURCE_FILENAME}.spv")
+        add_custom_command(
+            OUTPUT "${SHADER_SPIRV}"
+            COMMAND "${GLSLANG_VALIDATOR} -V ${SHADER_SOURCE} -o ${SHADER_SPIRV}"
+            DEPENDS "${GLSLANG_VALIDATOR}"
+            COMMENT "Compiling shaders."
+            VERBATIM
+        )
+        cmake_print_variables(SHADER_SOURCE SHADER_SPIRV)
+        target_sources(${TARGET_NAME} PRIVATE "${SHADER_SOURCE}")
+        target_sources(${TARGET_NAME} PRIVATE "${SHADER_SPIRV}")
+    endforeach()
+    #add_custom_command(
+    #    OUTPUT "${SHADERS_DIR}/slang.spv"
+    #    COMMAND ${GLSLANG_VALIDATOR} ${SHADER_SOURCES} -target spirv -profile spirv_1_4 -emit-spirv-directly -fvk-use-entrypoint-name ${ENTRY_POINTS} -o slang.spv
+    #    WORKING_DIRECTORY ${SHADERS_DIR}
+    #    DEPENDS ${SHADERS_DIR} ${SHADER_SOURCES}
+    #    COMMENT "Compiling Slang Shaders"
+    #    VERBATIM
+    #)
+    #add_custom_target (${TARGET} DEPENDS ${SHADERS_DIR}/slang.spv)
+endfunction()
+
+# Need to look into this more:
+# vkguide CMakeLists
+# https://docs.vulkan.org/tutorial/latest/03_Drawing_a_triangle/02_Graphics_pipeline_basics/01_Shader_modules.html
+# https://github.com/KhronosGroup/Vulkan-Tutorial/blob/main/attachments/CMakeLists.txt
+# https://www.reddit.com/r/vulkan/comments/1avm0fg/how_to_compile_shaders_with_cmake_that_one_game/
+
+
 include(cmake/FetchContentArchive.cmake)
 #set(FETCHCONTENT_QUIET OFF)
 

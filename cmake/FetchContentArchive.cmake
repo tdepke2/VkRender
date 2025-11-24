@@ -13,6 +13,7 @@ option(FETCHCONTENTARCHIVE_FORCE_DOWNLOAD "Prevent usage of local archive, conte
 # The FETCHCONTENTARCHIVE_FORCE_DOWNLOAD option can be used to override the
 # archive behavior, and make this function behave like the normal FetchContent
 # functions.
+#FIXME: should rename the function to be consistent with underscore_naming_style
 function(FetchContentArchive)
     if(NOT FETCHCONTENT_QUIET)
         message(STATUS "Running FetchContentArchive() with: ${ARGN}")
