@@ -25,7 +25,8 @@ add_executable(vk_render
 target_link_libraries(vk_render PRIVATE vkr_src)
 vkr_add_cxx_properties(vk_render)
 
-add_shaders(vk_render
-    SOURCES
-    "${PROJECT_SOURCE_DIR}/shaders/gradient.comp"
+include(../cmake/TargetShaders.cmake)
+
+target_glsl_shaders(vk_render BASE_DIR "${CMAKE_SOURCE_DIR}/shaders" SOURCES
+    "gradient.comp"
 )

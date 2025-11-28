@@ -13,10 +13,10 @@ option(FETCHCONTENTARCHIVE_FORCE_DOWNLOAD "Prevent usage of local archive, conte
 # The FETCHCONTENTARCHIVE_FORCE_DOWNLOAD option can be used to override the
 # archive behavior, and make this function behave like the normal FetchContent
 # functions.
-#FIXME: should rename the function to be consistent with underscore_naming_style
-function(FetchContentArchive)
+#
+function(fetch_content_archive)
     if(NOT FETCHCONTENT_QUIET)
-        message(STATUS "Running FetchContentArchive() with: ${ARGN}")
+        message(STATUS "Running fetch_content_archive() with: ${ARGN}")
     endif()
     cmake_parse_arguments(PARSED_ARGS
         "" "GIT_TAG;URL_MD5" "" ${ARGN}
@@ -30,7 +30,7 @@ function(FetchContentArchive)
     elseif(DEFINED PARSED_ARGS_URL_MD5)
         string(SUBSTRING "${PARSED_ARGS_URL_MD5}" 0 16 PARSED_ARGS_VERSION)
     else()
-        message(FATAL_ERROR "FetchContentArchive() for ${PARSED_ARGS_NAME} cannot determine version.")
+        message(FATAL_ERROR "fetch_content_archive() for ${PARSED_ARGS_NAME} cannot determine version.")
     endif()
 
     set(ARCHIVE_FILENAME "${PROJECT_SOURCE_DIR}/extern/${PARSED_ARGS_NAME}-${PARSED_ARGS_VERSION}.zip")
@@ -64,7 +64,7 @@ function(FetchContentArchive)
     else()
         # When FetchContent is run with FETCHCONTENT_SOURCE_DIR_<uppercaseName> set, it seems to ignore checking if the new package version is different from the existing one.
         if(NOT FETCHCONTENTARCHIVE_FORCE_DOWNLOAD AND FETCHCONTENT_SOURCE_DIR_${PARSED_ARGS_NAME_UPPER})
-            message(FATAL_ERROR "FetchContentArchive() for ${PARSED_ARGS_NAME} archive not found but source dir already set, did you change a package version? This should only be done with a clean build.")
+            message(FATAL_ERROR "fetch_content_archive() for ${PARSED_ARGS_NAME} archive not found but source dir already set, did you change a package version? This should only be done with a clean build.")
         endif()
 
         if(NOT FETCHCONTENT_QUIET)
@@ -73,7 +73,8 @@ function(FetchContentArchive)
         FetchContent_Declare(${ARGN})
         FetchContent_MakeAvailable(${PARSED_ARGS_NAME})
 
-        # Usually FetchContent_MakeAvailable() sets ${PARSED_ARGS_NAME}_SOURCE_DIR to point to the source dir, but for some packages this seems to fail. We can get this variable another way using FetchContent_GetProperties().
+        # Usually FetchContent_MakeAvailable() sets ${PARSED_ARGS_NAME}_SOURCE_DIR to point to the source dir, but for some packages this seems to fail.
+        # We can get this variable another way using FetchContent_GetProperties().
         FetchContent_GetProperties(${PARSED_ARGS_NAME}
             SOURCE_DIR SOURCE_DIR_ACTUAL
         )
@@ -82,7 +83,7 @@ function(FetchContentArchive)
             # Could use cmake_path() for this comparison (introduced in CMake 3.20).
             if(NOT "${SOURCE_DIR_ACTUAL}" STREQUAL "${SOURCE_DIR_EXPECTED}")
                 message(FATAL_ERROR
-                    "FetchContentArchive() for ${PARSED_ARGS_NAME} source dir paths differ:\n"
+                    "fetch_content_archive() for ${PARSED_ARGS_NAME} source dir paths differ:\n"
                     "${SOURCE_DIR_ACTUAL}\n"
                     "${SOURCE_DIR_EXPECTED}"
                 )
@@ -101,5 +102,4 @@ function(FetchContentArchive)
             )
         endif()
     endif()
-
 endfunction()
