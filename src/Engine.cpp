@@ -5,6 +5,8 @@
 
 #include <VkBootstrap.h>
 
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <chrono>
 #include <iterator>
@@ -135,6 +137,10 @@ void Engine::init() {
 
     SDL_WindowFlags window_flags = SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE;
     window_ = SDL_CreateWindow("Vulkan Engine", windowExtent_.width, windowExtent_.height, window_flags);
+    if (window_ == nullptr) {
+        spdlog::error("SDL failed to create window: {}", SDL_GetError());
+        abort();
+    }
 
     initVulkan();
 
@@ -217,7 +223,10 @@ void Engine::initVulkan() {
     debugMessenger_ = vk::raii::DebugUtilsMessengerEXT(instance_, vkbInst.debug_messenger);
 
     VkSurfaceKHR surfaceHandle;
-    SDL_Vulkan_CreateSurface(window_, *instance_, nullptr, &surfaceHandle);
+    if (!SDL_Vulkan_CreateSurface(window_, *instance_, nullptr, &surfaceHandle)) {
+        spdlog::error("SDL failed to create surface: {}", SDL_GetError());
+        abort();
+    }
     surface_ = vk::raii::SurfaceKHR(instance_, surfaceHandle);
 
     //vulkan 1.3 features

@@ -47,6 +47,21 @@ if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
         enable_testing()
     endif()
 
+    # SDL3 settings.
+    set(SDL_EXAMPLES OFF)
+
+    set(SDL_AUDIO OFF)
+    set(SDL_CAMERA OFF)
+    set(SDL_DIALOG OFF)
+    set(SDL_GPU OFF)
+    set(SDL_HAPTIC OFF)
+    set(SDL_HIDAPI OFF)
+    set(SDL_JOYSTICK OFF)
+    set(SDL_POWER OFF)
+    set(SDL_RENDER OFF)
+    set(SDL_SENSOR OFF)
+    set(SDL_VIDEO ON)
+
     message("")
 endif()
 
@@ -55,8 +70,6 @@ find_package(Vulkan REQUIRED)
 
 include(cmake/FetchContentArchive.cmake)
 #set(FETCHCONTENT_QUIET OFF)
-
-# FIXME: SDL3 has a lot of extra subsystems that are not being used, should disable them.
 
 # Import SDL3 for the window system and other utilities.
 message(STATUS "Fetching sources for SDL3...")
