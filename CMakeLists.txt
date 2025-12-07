@@ -71,41 +71,55 @@ find_package(Vulkan REQUIRED)
 include(cmake/FetchContentArchive.cmake)
 #set(FETCHCONTENT_QUIET OFF)
 
-# Import SDL3 for the window system and other utilities.
-message(STATUS "Fetching sources for SDL3...")
-fetch_content_archive(
+# Import Simple DirectMedia Layer for the window system and other utilities.
+fetch_archive_declare(
     SDL3
     GIT_REPOSITORY https://github.com/libsdl-org/SDL
     GIT_TAG release-3.2.26
 )
-message("")
+list(APPEND FETCH_PENDING "SDL3")
 
 # Import vk-bootstrap for convenient Vulkan initialization.
-message(STATUS "Fetching sources for vk-bootstrap...")
-fetch_content_archive(
+fetch_archive_declare(
     vk-bootstrap
     GIT_REPOSITORY https://github.com/charles-lunarg/vk-bootstrap
     GIT_TAG v1.4.330
 )
-message("")
+list(APPEND FETCH_PENDING "vk-bootstrap")
 
 # Import VulkanMemoryAllocator for Vulkan memory handling.
-message(STATUS "Fetching sources for VulkanMemoryAllocator...")
-fetch_content_archive(
+fetch_archive_declare(
     VulkanMemoryAllocator
     GIT_REPOSITORY https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator
     GIT_TAG v3.3.0
 )
-message("")
+list(APPEND FETCH_PENDING "VulkanMemoryAllocator")
 
 # Import spdlog for logging utilities.
-message(STATUS "Fetching sources for spdlog...")
-fetch_content_archive(
+fetch_archive_declare(
     spdlog
     GIT_REPOSITORY https://github.com/gabime/spdlog
     GIT_TAG v1.16.0
 )
-message("")
+list(APPEND FETCH_PENDING "spdlog")
+
+# Import Dear ImGui for GUI library.
+fetch_archive_declare(
+    imgui
+    GIT_REPOSITORY https://github.com/ocornut/imgui
+    GIT_TAG v1.92.5
+)
+list(APPEND FETCH_PENDING "imgui")
+
+# Populate all of the pending content.
+foreach(CONTENT_NAME IN LISTS FETCH_PENDING)
+    message(STATUS "Fetching sources for ${CONTENT_NAME}...")
+    fetch_archive_make_available(${CONTENT_NAME})
+    message("")
+endforeach()
+unset(FETCH_PENDING)
+
+include(cmake/ImGuiVulkan.cmake)
 
 # Run the next CMakeLists file (builds the executable).
 add_subdirectory(src)

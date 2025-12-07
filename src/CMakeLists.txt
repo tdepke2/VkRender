@@ -1,7 +1,12 @@
 # Create the main library from all source files.
 add_library(vkr_src
+    Common.h
+    Descriptors.cpp
+    Descriptors.h
     Engine.cpp
     Engine.h
+    Pipelines.cpp
+    Pipelines.h
     VmaUsage.cpp
 )
 
@@ -16,6 +21,7 @@ target_link_libraries(vkr_src PUBLIC
     vk-bootstrap::vk-bootstrap
     GPUOpen::VulkanMemoryAllocator
     spdlog::spdlog
+    imgui-vulkan::imgui-vulkan
 )
 vkr_add_cxx_properties(vkr_src)
 
