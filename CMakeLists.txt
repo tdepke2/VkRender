@@ -68,7 +68,7 @@ endif()
 # FIXME: recommended to use FindVulkan.cmake from Khronos instead: https://docs.vulkan.org/tutorial/latest/02_Development_environment.html
 find_package(Vulkan REQUIRED)
 
-include(cmake/FetchContentArchive.cmake)
+include(cmake/FetchArchive.cmake)
 #set(FETCHCONTENT_QUIET OFF)
 
 # Import Simple DirectMedia Layer for the window system and other utilities.
