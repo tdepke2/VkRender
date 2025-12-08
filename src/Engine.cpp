@@ -1,4 +1,5 @@
 #include <Engine.h>
+#include <Pipelines.h>
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
@@ -6,6 +7,10 @@
 #include <VkBootstrap.h>
 
 #include <spdlog/spdlog.h>
+
+#include <imgui.h>
+#include <backends/imgui_impl_sdl3.h>
+#include <backends/imgui_impl_vulkan.h>
 
 #include <algorithm>
 #include <chrono>
@@ -126,6 +131,41 @@ void copyImageToImage(VkCommandBuffer cmd, VkImage source, VkImage destination, 
     vkCmdBlitImage2(cmd, &blitInfo);
 }
 
+VkRenderingAttachmentInfo attachment_info(
+    VkImageView view, VkClearValue* clear ,VkImageLayout layout /*= VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL*/)
+{
+    VkRenderingAttachmentInfo colorAttachment {};
+    colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    colorAttachment.pNext = nullptr;
+
+    colorAttachment.imageView = view;
+    colorAttachment.imageLayout = layout;
+    colorAttachment.loadOp = clear ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    if (clear) {
+        colorAttachment.clearValue = *clear;
+    }
+
+    return colorAttachment;
+}
+
+VkRenderingInfo rendering_info(VkExtent2D renderExtent, VkRenderingAttachmentInfo* colorAttachment,
+    VkRenderingAttachmentInfo* depthAttachment)
+{
+    VkRenderingInfo renderInfo {};
+    renderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    renderInfo.pNext = nullptr;
+
+    renderInfo.renderArea = VkRect2D { VkOffset2D { 0, 0 }, renderExtent };
+    renderInfo.layerCount = 1;
+    renderInfo.colorAttachmentCount = 1;
+    renderInfo.pColorAttachments = colorAttachment;
+    renderInfo.pDepthAttachment = depthAttachment;
+    renderInfo.pStencilAttachment = nullptr;
+
+    return renderInfo;
+}
+
 }
 
 void Engine::init() {
@@ -149,24 +189,32 @@ void Engine::init() {
     initCommands();
 
     initSyncStructures();
+
+    initDescriptors();
+
+    initPipelines();
+
+    initImGui();
 }
 
 void Engine::run() {
-    SDL_Event e;
-    bool bQuit = false;
+    SDL_Event event;
+    bool closeWindow = false;
 
     //main loop
-    while (!bQuit)
-    {
+    while (!closeWindow) {
         //Handle events on queue
-        while (SDL_PollEvent(&e))
-        {
-            //close the window when user alt-f4s or clicks the X button
-            if (e.type == SDL_EVENT_QUIT) bQuit = true;
+        while (SDL_PollEvent(&event)) {
+            ImGui_ImplSDL3_ProcessEvent(&event);
 
-            if (e.type == SDL_EVENT_WINDOW_MINIMIZED) {
+            //close the window when user alt-f4s or clicks the X button
+            if (event.type == SDL_EVENT_QUIT) {
+                closeWindow = true;
+            }
+
+            if (event.type == SDL_EVENT_WINDOW_MINIMIZED) {
                 freeze_rendering = true;
-            } else if (e.type == SDL_EVENT_WINDOW_RESTORED) {
+            } else if (event.type == SDL_EVENT_WINDOW_RESTORED) {
                 freeze_rendering = false;
             }
         }
@@ -177,6 +225,17 @@ void Engine::run() {
             continue;
         }
 
+        // imgui new frame
+        ImGui_ImplVulkan_NewFrame();
+        ImGui_ImplSDL3_NewFrame();
+        ImGui::NewFrame();
+
+        // some imgui UI to test
+        ImGui::ShowDemoWindow();
+
+        // make imgui calculate internal draw structures
+        ImGui::Render();
+
         draw();
     }
 }
@@ -184,6 +243,22 @@ void Engine::run() {
 void Engine::cleanup() {
     //make sure the gpu has stopped doing its things
     vkDeviceWaitIdle(*device_);
+
+    ImGui_ImplVulkan_Shutdown();
+    ImGui_ImplSDL3_Shutdown();
+    ImGui::DestroyContext();
+    vkDestroyDescriptorPool(*device_, imguiPool, nullptr);
+
+    vkDestroyPipelineLayout(*device_, _gradientPipelineLayout, nullptr);
+    vkDestroyPipeline(*device_, _gradientPipeline, nullptr);
+
+    globalDescriptorAllocator.destroy_pool(*device_);
+
+    vkDestroyDescriptorSetLayout(*device_, _drawImageDescriptorLayout, nullptr);
+
+    vkDestroyFence(*device_, _immFence, nullptr);
+
+    vkDestroyCommandPool(*device_, _immCommandPool, nullptr);
 
     for (unsigned int i = 0; i < FRAME_OVERLAP; i++) {
         vkDestroyCommandPool(*device_, _frames[i]._commandPool, nullptr);
@@ -394,6 +469,19 @@ void Engine::initCommands() {
 
         VK_CHECK(vkAllocateCommandBuffers(*device_, &cmdAllocInfo, &_frames[i]._mainCommandBuffer));
     }
+
+    VK_CHECK(vkCreateCommandPool(*device_, &commandPoolInfo, nullptr, &_immCommandPool));
+
+    // allocate the command buffer for immediate submits
+    VkCommandBufferAllocateInfo cmdAllocInfo = {};
+    cmdAllocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    cmdAllocInfo.pNext = nullptr;
+
+    cmdAllocInfo.commandPool = _immCommandPool;
+    cmdAllocInfo.commandBufferCount = 1;
+    cmdAllocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+
+    VK_CHECK(vkAllocateCommandBuffers(*device_, &cmdAllocInfo, &_immCommandBuffer));
 }
 
 void Engine::initSyncStructures() {
@@ -416,6 +504,130 @@ void Engine::initSyncStructures() {
         VK_CHECK(vkCreateSemaphore(*device_, &semaphoreCreateInfo, nullptr, &_frames[i]._swapchainSemaphore));
         VK_CHECK(vkCreateSemaphore(*device_, &semaphoreCreateInfo, nullptr, &_frames[i]._renderSemaphore));
     }
+
+    VK_CHECK(vkCreateFence(*device_, &fenceCreateInfo, nullptr, &_immFence));
+}
+
+void Engine::initDescriptors() {
+    //create a descriptor pool that will hold 10 sets with 1 image each
+    std::vector<DescriptorAllocator::PoolSizeRatio> sizes =
+    {
+        { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1 }
+    };
+
+    globalDescriptorAllocator.init_pool(*device_, 10, sizes);
+
+    //make the descriptor set layout for our compute draw
+    {
+        DescriptorLayoutBuilder builder;
+        builder.add_binding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+        _drawImageDescriptorLayout = builder.build(*device_, VK_SHADER_STAGE_COMPUTE_BIT);
+    }
+
+    //allocate a descriptor set for our draw image
+    _drawImageDescriptors = globalDescriptorAllocator.allocate(*device_, _drawImageDescriptorLayout);
+
+    VkDescriptorImageInfo imgInfo{};
+    imgInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+    imgInfo.imageView = *drawImage_.imageView;
+
+    VkWriteDescriptorSet drawImageWrite = {};
+    drawImageWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    drawImageWrite.pNext = nullptr;
+
+    drawImageWrite.dstBinding = 0;
+    drawImageWrite.dstSet = _drawImageDescriptors;
+    drawImageWrite.descriptorCount = 1;
+    drawImageWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    drawImageWrite.pImageInfo = &imgInfo;
+
+    vkUpdateDescriptorSets(*device_, 1, &drawImageWrite, 0, nullptr);
+}
+
+void Engine::initPipelines() {
+    VkPipelineLayoutCreateInfo computeLayout{};
+    computeLayout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    computeLayout.pNext = nullptr;
+    computeLayout.pSetLayouts = &_drawImageDescriptorLayout;
+    computeLayout.setLayoutCount = 1;
+
+    VK_CHECK(vkCreatePipelineLayout(*device_, &computeLayout, nullptr, &_gradientPipelineLayout));
+
+    VkShaderModule computeDrawShader;
+    if (!loadShaderModule("shaders/gradient.comp.spv", *device_, &computeDrawShader))
+    {
+        fmt::print("Error when building the compute shader \n");
+    }
+
+    VkPipelineShaderStageCreateInfo stageinfo{};
+    stageinfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    stageinfo.pNext = nullptr;
+    stageinfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+    stageinfo.module = computeDrawShader;
+    stageinfo.pName = "main";
+
+    VkComputePipelineCreateInfo computePipelineCreateInfo{};
+    computePipelineCreateInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+    computePipelineCreateInfo.pNext = nullptr;
+    computePipelineCreateInfo.layout = _gradientPipelineLayout;
+    computePipelineCreateInfo.stage = stageinfo;
+
+    VK_CHECK(vkCreateComputePipelines(*device_,VK_NULL_HANDLE,1,&computePipelineCreateInfo, nullptr, &_gradientPipeline));
+
+    vkDestroyShaderModule(*device_, computeDrawShader, nullptr);
+}
+
+void Engine::initImGui() {
+    // Create descriptor pool for ImGui.
+    VkDescriptorPoolSize pool_sizes[] = {
+        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE },
+    };
+
+    VkDescriptorPoolCreateInfo pool_info = {};
+    pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+    pool_info.maxSets = 0;
+    for (VkDescriptorPoolSize& pool_size : pool_sizes) {
+        pool_info.maxSets += pool_size.descriptorCount;
+    }
+    pool_info.poolSizeCount = (uint32_t)std::size(pool_sizes);
+    pool_info.pPoolSizes = pool_sizes;
+
+    VK_CHECK(vkCreateDescriptorPool(*device_, &pool_info, nullptr, &imguiPool));
+
+    // Setup Dear ImGui context
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;  // Enable Keyboard Controls
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;  // Enable Gamepad Controls
+
+    ImGui::StyleColorsDark();
+
+    ImGui_ImplSDL3_InitForVulkan(window_);
+    ImGui_ImplVulkan_InitInfo init_info = {};
+    init_info.Instance = *instance_;
+    init_info.PhysicalDevice = *physicalDevice_;
+    init_info.Device = *device_;
+    init_info.QueueFamily = graphicsQueueFamily_;
+    init_info.Queue = *graphicsQueue_;
+    init_info.DescriptorPool = imguiPool;
+    init_info.MinImageCount = 2;
+    init_info.ImageCount = 2;
+    init_info.UseDynamicRendering = true;
+
+    // Dynamic rendering parameters for imgui to use
+    VkPipelineRenderingCreateInfoKHR pipelineRenderingCreateInfo = {};
+    pipelineRenderingCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+    pipelineRenderingCreateInfo.colorAttachmentCount = 1;
+    VkFormat colorAttachmentFormat = static_cast<VkFormat>(swapchainImageFormat_);
+    pipelineRenderingCreateInfo.pColorAttachmentFormats = &colorAttachmentFormat;
+
+    init_info.PipelineInfoMain = {};
+    init_info.PipelineInfoMain.PipelineRenderingCreateInfo = pipelineRenderingCreateInfo;
+    init_info.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+
+    ImGui_ImplVulkan_Init(&init_info);
 }
 
 void Engine::draw() {
@@ -461,8 +673,14 @@ void Engine::draw() {
     // execute a copy from the draw image into the swapchain
     copyImageToImage(cmd, drawImage_.image, swapchainImages_[swapchainImageIndex], _drawExtent, swapchainExtent_);
 
-    // set swapchain image layout to Present so we can show it on the screen
-    transitionImage(cmd, swapchainImages_[swapchainImageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+    // set swapchain image layout to Attachment Optimal so we can draw it
+    transitionImage(cmd, swapchainImages_[swapchainImageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+    // draw imgui into the swapchain image
+    drawImGui(cmd, *swapchainImageViews_[swapchainImageIndex]);
+
+    // set swapchain image layout to Present so we can draw it
+    transitionImage(cmd, swapchainImages_[swapchainImageIndex], VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
     //finalize the command buffer (we can no longer add commands, but it can now be executed)
     VK_CHECK(vkEndCommandBuffer(cmd));
@@ -505,6 +723,7 @@ void Engine::draw() {
 }
 
 void Engine::drawBackground(vk::CommandBuffer cmd) {
+    /*
     //make a clear-color from frame number. This will flash with a 120 frame period.
     VkClearColorValue clearValue;
     float flash = std::abs(std::sin(_frameNumber / 120.f));
@@ -514,4 +733,59 @@ void Engine::drawBackground(vk::CommandBuffer cmd) {
 
     //clear image
     vkCmdClearColorImage(cmd, drawImage_.image, VK_IMAGE_LAYOUT_GENERAL, &clearValue, 1, &clearRange);
+    */
+
+    // bind the gradient drawing compute pipeline
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _gradientPipeline);
+
+    // bind the descriptor set containing the draw image for the compute pipeline
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _gradientPipelineLayout, 0, 1, &_drawImageDescriptors, 0, nullptr);
+
+    // execute the compute pipeline dispatch. We are using 16x16 workgroup size so we need to divide by it
+    vkCmdDispatch(cmd, std::ceil(_drawExtent.width / 16.0), std::ceil(_drawExtent.height / 16.0), 1);
+}
+
+void Engine::drawImGui(VkCommandBuffer cmd, VkImageView targetImageView)
+{
+    VkRenderingAttachmentInfo colorAttachment = attachment_info(targetImageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    VkRenderingInfo renderInfo = rendering_info(swapchainExtent_, &colorAttachment, nullptr);
+
+    vkCmdBeginRendering(cmd, &renderInfo);
+
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
+
+    vkCmdEndRendering(cmd);
+}
+
+void Engine::immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function) {
+    VK_CHECK(vkResetFences(*device_, 1, &_immFence));
+    VK_CHECK(vkResetCommandBuffer(_immCommandBuffer, 0));
+
+    VkCommandBuffer cmd = _immCommandBuffer;
+
+    VkCommandBufferBeginInfo cmdBeginInfo = {};
+    cmdBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    cmdBeginInfo.pNext = nullptr;
+    cmdBeginInfo.pInheritanceInfo = nullptr;
+    cmdBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+    VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
+
+    function(cmd);
+
+    VK_CHECK(vkEndCommandBuffer(cmd));
+
+    VkCommandBufferSubmitInfo cmdinfo{};
+    cmdinfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+    cmdinfo.pNext = nullptr;
+    cmdinfo.commandBuffer = cmd;
+    cmdinfo.deviceMask = 0;
+
+    VkSubmitInfo2 submit = submitInfo(&cmdinfo, nullptr, nullptr);
+
+    // submit command buffer to the queue and execute it.
+    //  _renderFence will now block until the graphic commands finish execution
+    VK_CHECK(vkQueueSubmit2(*graphicsQueue_, 1, &submit, _immFence));
+
+    VK_CHECK(vkWaitForFences(*device_, 1, &_immFence, true, 9999999999));
 }

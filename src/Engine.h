@@ -1,36 +1,10 @@
 #pragma once
 
+#include <functional>
 #include <vector>
 
-// FIXME: we should look into precompiled headers instead of doing this, see vk_types.h and corresponding cmake files.
-#define VULKAN_HPP_NO_CONSTRUCTORS
-#include <vulkan/vulkan_raii.hpp>
-#include <vulkan/vk_enum_string_helper.h>    // FIXME: we want vk::to_string() instead
-#include <vk_mem_alloc.h>
-#include <spdlog/fmt/bundled/base.h>
-
-#define VK_CHECK(x)                                                     \
-    do {                                                                \
-        VkResult err = x;                                               \
-        if (err) {                                                      \
-            fmt::println("Detected Vulkan error: {}", string_VkResult(err)); \
-            abort();                                                    \
-        }                                                               \
-    } while (0)
-
-struct AllocatedImage {
-    vk::Image image;
-    vk::raii::ImageView imageView = nullptr;
-    VmaAllocation allocation;
-    vk::Extent3D imageExtent;
-    vk::Format imageFormat;
-
-    // FIXME: this isn't great. do we want an raii wrapper for vma, or just use std::unique_ptr with custom deletor?
-    void clear(VmaAllocator allocator) {
-        imageView.clear();
-        vmaDestroyImage(allocator, image, allocation);
-    }
-};
+#include <Common.h>
+#include <Descriptors.h>
 
 struct SDL_Window;
 
@@ -57,10 +31,15 @@ private:
     void destroySwapchain();
     void initCommands();
     void initSyncStructures();
+    void initDescriptors();
+    void initPipelines();
+    void initImGui();
 
     FrameData& getCurrentFrame() { return _frames[_frameNumber % FRAME_OVERLAP]; };
     void draw();
     void drawBackground(vk::CommandBuffer cmd);
+    void drawImGui(VkCommandBuffer cmd, VkImageView targetImageView);
+    void immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function);
 
     int _frameNumber {0};
 
@@ -90,6 +69,21 @@ private:
 
     AllocatedImage drawImage_;
     VkExtent2D _drawExtent;
+
+    DescriptorAllocator globalDescriptorAllocator;
+
+    VkDescriptorSet _drawImageDescriptors;
+    VkDescriptorSetLayout _drawImageDescriptorLayout;
+
+    VkPipeline _gradientPipeline;
+    VkPipelineLayout _gradientPipelineLayout;
+
+    // immediate submit structures
+    VkFence _immFence;
+    VkCommandBuffer _immCommandBuffer;
+    VkCommandPool _immCommandPool;
+
+    VkDescriptorPool imguiPool;
 
     bool resize_requested{ false };
     bool freeze_rendering{ false };
