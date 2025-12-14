@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <vector>
+#include <span>
 
 #include <Common.h>
 #include <Descriptors.h>
@@ -18,6 +19,13 @@ struct FrameData {
 
 constexpr unsigned int FRAME_OVERLAP = 2;
 
+struct ComputePushConstants {
+    glm::vec4 data1;
+    glm::vec4 data2;
+    glm::vec4 data3;
+    glm::vec4 data4;
+};
+
 class Engine {
 public:
     void init();
@@ -33,13 +41,20 @@ private:
     void initSyncStructures();
     void initDescriptors();
     void initPipelines();
+    void initTrianglePipeline();
+    void initMeshPipeline();
     void initImGui();
+    void initDefaultData();
 
     FrameData& getCurrentFrame() { return _frames[_frameNumber % FRAME_OVERLAP]; };
     void draw();
     void drawBackground(vk::CommandBuffer cmd);
+    void drawGeometry(vk::CommandBuffer cmd);
     void drawImGui(VkCommandBuffer cmd, VkImageView targetImageView);
     void immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function);
+    AllocatedBuffer createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
+    void destroyBuffer(const AllocatedBuffer& buffer);
+    GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
 
     int _frameNumber {0};
 
@@ -77,6 +92,12 @@ private:
 
     VkPipeline _gradientPipeline;
     VkPipelineLayout _gradientPipelineLayout;
+    ComputePushConstants _gradientConstants = {
+        {1, 0, 0, 1},
+        {0, 0, 1, 1},
+        {0, 0, 0, 0},
+        {0, 0, 0, 0}
+    };
 
     // immediate submit structures
     VkFence _immFence;
@@ -84,6 +105,14 @@ private:
     VkCommandPool _immCommandPool;
 
     VkDescriptorPool imguiPool;
+
+    VkPipelineLayout _trianglePipelineLayout;
+    VkPipeline _trianglePipeline;
+
+    VkPipelineLayout _meshPipelineLayout;
+    VkPipeline _meshPipeline;
+
+    GPUMeshBuffers rectangle;
 
     bool resize_requested{ false };
     bool freeze_rendering{ false };

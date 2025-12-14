@@ -4,9 +4,14 @@
 #define VULKAN_HPP_NO_CONSTRUCTORS
 #include <vulkan/vulkan_raii.hpp>
 #include <vulkan/vk_enum_string_helper.h>    // FIXME: we want vk::to_string() instead
+
+// FIXME: may want a VmaUsage.h file instead, like vma example.
 #include <vk_mem_alloc.h>
 
 #include <spdlog/fmt/bundled/base.h>
+
+#include <glm/mat4x4.hpp>
+#include <glm/vec4.hpp>
 
 struct AllocatedImage {
     vk::Image image;
@@ -20,6 +25,33 @@ struct AllocatedImage {
         imageView.clear();
         vmaDestroyImage(allocator, image, allocation);
     }
+};
+
+struct AllocatedBuffer {
+    VkBuffer buffer;
+    VmaAllocation allocation;
+    VmaAllocationInfo info;
+};
+
+struct Vertex {
+    glm::vec3 position;
+    float uv_x;
+    glm::vec3 normal;
+    float uv_y;
+    glm::vec4 color;
+};
+
+// holds the resources needed for a mesh
+struct GPUMeshBuffers {
+    AllocatedBuffer indexBuffer;
+    AllocatedBuffer vertexBuffer;
+    VkDeviceAddress vertexBufferAddress;
+};
+
+// push constants for our mesh object draws
+struct GPUDrawPushConstants {
+    glm::mat4 worldMatrix;
+    VkDeviceAddress vertexBuffer;
 };
 
 #define VK_CHECK(x)                                                     \

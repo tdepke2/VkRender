@@ -195,6 +195,8 @@ void Engine::init() {
     initPipelines();
 
     initImGui();
+
+    initDefaultData();
 }
 
 void Engine::run() {
@@ -231,7 +233,15 @@ void Engine::run() {
         ImGui::NewFrame();
 
         // some imgui UI to test
-        ImGui::ShowDemoWindow();
+        //ImGui::ShowDemoWindow();
+
+        if (ImGui::Begin("background")) {
+            ImGui::InputFloat4("data1",(float*)& _gradientConstants.data1);
+            ImGui::InputFloat4("data2",(float*)& _gradientConstants.data2);
+            ImGui::InputFloat4("data3",(float*)& _gradientConstants.data3);
+            ImGui::InputFloat4("data4",(float*)& _gradientConstants.data4);
+        }
+        ImGui::End();
 
         // make imgui calculate internal draw structures
         ImGui::Render();
@@ -244,10 +254,19 @@ void Engine::cleanup() {
     //make sure the gpu has stopped doing its things
     vkDeviceWaitIdle(*device_);
 
+    destroyBuffer(rectangle.indexBuffer);
+    destroyBuffer(rectangle.vertexBuffer);
+
     ImGui_ImplVulkan_Shutdown();
     ImGui_ImplSDL3_Shutdown();
     ImGui::DestroyContext();
     vkDestroyDescriptorPool(*device_, imguiPool, nullptr);
+
+    vkDestroyPipelineLayout(*device_, _meshPipelineLayout, nullptr);
+    vkDestroyPipeline(*device_, _meshPipeline, nullptr);
+
+    vkDestroyPipelineLayout(*device_, _trianglePipelineLayout, nullptr);
+    vkDestroyPipeline(*device_, _trianglePipeline, nullptr);
 
     vkDestroyPipelineLayout(*device_, _gradientPipelineLayout, nullptr);
     vkDestroyPipeline(*device_, _gradientPipeline, nullptr);
@@ -551,10 +570,18 @@ void Engine::initPipelines() {
     computeLayout.pSetLayouts = &_drawImageDescriptorLayout;
     computeLayout.setLayoutCount = 1;
 
+    VkPushConstantRange pushConstant{};
+    pushConstant.offset = 0;
+    pushConstant.size = sizeof(ComputePushConstants);
+    pushConstant.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+    computeLayout.pPushConstantRanges = &pushConstant;
+    computeLayout.pushConstantRangeCount = 1;
+
     VK_CHECK(vkCreatePipelineLayout(*device_, &computeLayout, nullptr, &_gradientPipelineLayout));
 
     VkShaderModule computeDrawShader;
-    if (!loadShaderModule("shaders/gradient.comp.spv", *device_, &computeDrawShader))
+    if (!loadShaderModule("shaders/gradient_color.comp.spv", *device_, &computeDrawShader))
     {
         fmt::print("Error when building the compute shader \n");
     }
@@ -575,6 +602,122 @@ void Engine::initPipelines() {
     VK_CHECK(vkCreateComputePipelines(*device_,VK_NULL_HANDLE,1,&computePipelineCreateInfo, nullptr, &_gradientPipeline));
 
     vkDestroyShaderModule(*device_, computeDrawShader, nullptr);
+
+    initTrianglePipeline();
+
+    initMeshPipeline();
+}
+
+void Engine::initTrianglePipeline() {
+    VkShaderModule triangleFragShader;
+    if (!loadShaderModule("shaders/colored_triangle.frag.spv", *device_, &triangleFragShader)) {
+        fmt::print("Error when building the triangle fragment shader module");
+    }
+    else {
+        fmt::print("Triangle fragment shader succesfully loaded");
+    }
+
+    VkShaderModule triangleVertexShader;
+    if (!loadShaderModule("shaders/colored_triangle.vert.spv", *device_, &triangleVertexShader)) {
+        fmt::print("Error when building the triangle vertex shader module");
+    }
+    else {
+        fmt::print("Triangle vertex shader succesfully loaded");
+    }
+
+    //build the pipeline layout that controls the inputs/outputs of the shader
+    //we are not using descriptor sets or other systems yet, so no need to use anything other than empty default
+    VkPipelineLayoutCreateInfo pipeline_layout_info = { .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
+    VK_CHECK(vkCreatePipelineLayout(*device_, &pipeline_layout_info, nullptr, &_trianglePipelineLayout));
+
+    PipelineBuilder pipelineBuilder;
+
+    //use the triangle layout we created
+    pipelineBuilder._pipelineLayout = _trianglePipelineLayout;
+    //connecting the vertex and pixel shaders to the pipeline
+    pipelineBuilder.set_shaders(triangleVertexShader, triangleFragShader);
+    //it will draw triangles
+    pipelineBuilder.set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+    //filled triangles
+    pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
+    //no backface culling
+    pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+    //no multisampling
+    pipelineBuilder.set_multisampling_none();
+    //no blending
+    pipelineBuilder.disable_blending();
+    //no depth testing
+    pipelineBuilder.disable_depthtest();
+
+    //connect the image format we will draw into, from draw image
+    pipelineBuilder.set_color_attachment_format(static_cast<VkFormat>(drawImage_.imageFormat));
+    pipelineBuilder.set_depth_format(VK_FORMAT_UNDEFINED);
+
+    //finally build the pipeline
+    _trianglePipeline = pipelineBuilder.build_pipeline(*device_);
+
+    //clean structures
+    vkDestroyShaderModule(*device_, triangleFragShader, nullptr);
+    vkDestroyShaderModule(*device_, triangleVertexShader, nullptr);
+}
+
+void Engine::initMeshPipeline() {
+    VkShaderModule triangleFragShader;
+    if (!loadShaderModule("shaders/colored_triangle.frag.spv", *device_, &triangleFragShader)) {
+        fmt::print("Error when building the triangle fragment shader module");
+    }
+    else {
+        fmt::print("Triangle fragment shader succesfully loaded");
+    }
+
+    VkShaderModule triangleVertexShader;
+    if (!loadShaderModule("shaders/colored_triangle_mesh.vert.spv", *device_, &triangleVertexShader)) {
+        fmt::print("Error when building the triangle vertex shader module");
+    }
+    else {
+        fmt::print("Triangle vertex shader succesfully loaded");
+    }
+
+    VkPushConstantRange bufferRange{};
+    bufferRange.offset = 0;
+    bufferRange.size = sizeof(GPUDrawPushConstants);
+    bufferRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+    VkPipelineLayoutCreateInfo pipeline_layout_info = { .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
+    pipeline_layout_info.pPushConstantRanges = &bufferRange;
+    pipeline_layout_info.pushConstantRangeCount = 1;
+
+    VK_CHECK(vkCreatePipelineLayout(*device_, &pipeline_layout_info, nullptr, &_meshPipelineLayout));
+
+    PipelineBuilder pipelineBuilder;
+
+    //use the triangle layout we created
+    pipelineBuilder._pipelineLayout = _meshPipelineLayout;
+    //connecting the vertex and pixel shaders to the pipeline
+    pipelineBuilder.set_shaders(triangleVertexShader, triangleFragShader);
+    //it will draw triangles
+    pipelineBuilder.set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+    //filled triangles
+    pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
+    //no backface culling
+    pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+    //no multisampling
+    pipelineBuilder.set_multisampling_none();
+    //no blending
+    pipelineBuilder.disable_blending();
+
+    pipelineBuilder.disable_depthtest();
+
+    //connect the image format we will draw into, from draw image
+    pipelineBuilder.set_color_attachment_format(static_cast<VkFormat>(drawImage_.imageFormat));
+    pipelineBuilder.set_depth_format(VK_FORMAT_UNDEFINED);
+
+    //finally build the pipeline
+    _meshPipeline = pipelineBuilder.build_pipeline(*device_);
+
+    //clean structures
+    vkDestroyShaderModule(*device_, triangleFragShader, nullptr);
+    vkDestroyShaderModule(*device_, triangleVertexShader, nullptr);
 }
 
 void Engine::initImGui() {
@@ -630,6 +773,32 @@ void Engine::initImGui() {
     ImGui_ImplVulkan_Init(&init_info);
 }
 
+void Engine::initDefaultData() {
+    std::array<Vertex,4> rect_vertices;
+
+    rect_vertices[0].position = {0.5,-0.5, 0};
+    rect_vertices[1].position = {0.5,0.5, 0};
+    rect_vertices[2].position = {-0.5,-0.5, 0};
+    rect_vertices[3].position = {-0.5,0.5, 0};
+
+    rect_vertices[0].color = {0,0, 0,1};
+    rect_vertices[1].color = { 0.5,0.5,0.5 ,1};
+    rect_vertices[2].color = { 1,0, 0,1 };
+    rect_vertices[3].color = { 0,1, 0,1 };
+
+    std::array<uint32_t,6> rect_indices;
+
+    rect_indices[0] = 0;
+    rect_indices[1] = 1;
+    rect_indices[2] = 2;
+
+    rect_indices[3] = 2;
+    rect_indices[4] = 1;
+    rect_indices[5] = 3;
+
+    rectangle = uploadMesh(rect_indices,rect_vertices);
+}
+
 void Engine::draw() {
     // wait until the gpu has finished rendering the last frame. Timeout of 1
     // second
@@ -666,8 +835,12 @@ void Engine::draw() {
 
     drawBackground(cmd);
 
+    transitionImage(cmd, drawImage_.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+    drawGeometry(cmd);
+
     //transition the draw image and the swapchain image into their correct transfer layouts
-    transitionImage(cmd, drawImage_.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    transitionImage(cmd, drawImage_.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
     transitionImage(cmd, swapchainImages_[swapchainImageIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
     // execute a copy from the draw image into the swapchain
@@ -741,8 +914,54 @@ void Engine::drawBackground(vk::CommandBuffer cmd) {
     // bind the descriptor set containing the draw image for the compute pipeline
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _gradientPipelineLayout, 0, 1, &_drawImageDescriptors, 0, nullptr);
 
+    vkCmdPushConstants(cmd, _gradientPipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstants), &_gradientConstants);
+
     // execute the compute pipeline dispatch. We are using 16x16 workgroup size so we need to divide by it
     vkCmdDispatch(cmd, std::ceil(_drawExtent.width / 16.0), std::ceil(_drawExtent.height / 16.0), 1);
+}
+
+void Engine::drawGeometry(vk::CommandBuffer cmd) {
+    VkRenderingAttachmentInfo colorAttachment = attachment_info(*drawImage_.imageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+    VkRenderingInfo renderInfo = rendering_info(_drawExtent, &colorAttachment, nullptr);
+    vkCmdBeginRendering(cmd, &renderInfo);
+
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _trianglePipeline);
+
+    //set dynamic viewport and scissor
+    VkViewport viewport = {};
+    viewport.x = 0;
+    viewport.y = 0;
+    viewport.width = _drawExtent.width;
+    viewport.height = _drawExtent.height;
+    viewport.minDepth = 0.f;
+    viewport.maxDepth = 1.f;
+
+    vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+    VkRect2D scissor = {};
+    scissor.offset.x = 0;
+    scissor.offset.y = 0;
+    scissor.extent.width = _drawExtent.width;
+    scissor.extent.height = _drawExtent.height;
+
+    vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+    //launch a draw command to draw 3 vertices
+    vkCmdDraw(cmd, 3, 1, 0, 0);
+
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _meshPipeline);
+
+    GPUDrawPushConstants push_constants;
+    push_constants.worldMatrix = glm::mat4{ 1.f };
+    push_constants.vertexBuffer = rectangle.vertexBufferAddress;
+
+    vkCmdPushConstants(cmd, _meshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
+    vkCmdBindIndexBuffer(cmd, rectangle.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+
+    vkCmdDrawIndexed(cmd, 6, 1, 0, 0, 0);
+
+    vkCmdEndRendering(cmd);
 }
 
 void Engine::drawImGui(VkCommandBuffer cmd, VkImageView targetImageView)
@@ -788,4 +1007,76 @@ void Engine::immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function
     VK_CHECK(vkQueueSubmit2(*graphicsQueue_, 1, &submit, _immFence));
 
     VK_CHECK(vkWaitForFences(*device_, 1, &_immFence, true, 9999999999));
+}
+
+AllocatedBuffer Engine::createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage) {
+    // allocate buffer
+    VkBufferCreateInfo bufferInfo = {.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    bufferInfo.pNext = nullptr;
+    bufferInfo.size = allocSize;
+
+    bufferInfo.usage = usage;
+
+    VmaAllocationCreateInfo vmaallocInfo = {};
+    vmaallocInfo.usage = memoryUsage;
+    vmaallocInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
+    AllocatedBuffer newBuffer;
+
+    // allocate the buffer
+    VK_CHECK(vmaCreateBuffer(allocator_, &bufferInfo, &vmaallocInfo, &newBuffer.buffer, &newBuffer.allocation,
+        &newBuffer.info));
+
+    return newBuffer;
+}
+
+void Engine::destroyBuffer(const AllocatedBuffer& buffer) {
+    vmaDestroyBuffer(allocator_, buffer.buffer, buffer.allocation);
+}
+
+GPUMeshBuffers Engine::uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices) {
+    const size_t vertexBufferSize = vertices.size() * sizeof(Vertex);
+    const size_t indexBufferSize = indices.size() * sizeof(uint32_t);
+
+    GPUMeshBuffers newSurface;
+
+    //create vertex buffer
+    newSurface.vertexBuffer = createBuffer(vertexBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+        VMA_MEMORY_USAGE_GPU_ONLY);
+
+    //find the adress of the vertex buffer
+    VkBufferDeviceAddressInfo deviceAdressInfo{ .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,.buffer = newSurface.vertexBuffer.buffer };
+    newSurface.vertexBufferAddress = vkGetBufferDeviceAddress(*device_, &deviceAdressInfo);
+
+    //create index buffer
+    newSurface.indexBuffer = createBuffer(indexBufferSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VMA_MEMORY_USAGE_GPU_ONLY);    // FIXME: vma flag is deprecated.
+
+    AllocatedBuffer staging = createBuffer(vertexBufferSize + indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+
+    void* data = staging.info.pMappedData;
+
+    // copy vertex buffer
+    memcpy(data, vertices.data(), vertexBufferSize);
+    // copy index buffer
+    memcpy((char*)data + vertexBufferSize, indices.data(), indexBufferSize);
+
+    immediateSubmit([&](VkCommandBuffer cmd) {
+        VkBufferCopy vertexCopy{ 0 };
+        vertexCopy.dstOffset = 0;
+        vertexCopy.srcOffset = 0;
+        vertexCopy.size = vertexBufferSize;
+
+        vkCmdCopyBuffer(cmd, staging.buffer, newSurface.vertexBuffer.buffer, 1, &vertexCopy);
+
+        VkBufferCopy indexCopy{ 0 };
+        indexCopy.dstOffset = 0;
+        indexCopy.srcOffset = vertexBufferSize;
+        indexCopy.size = indexBufferSize;
+
+        vkCmdCopyBuffer(cmd, staging.buffer, newSurface.indexBuffer.buffer, 1, &indexCopy);
+    });
+
+    destroyBuffer(staging);
+
+    return newSurface;
 }

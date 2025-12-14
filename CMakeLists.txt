@@ -111,6 +111,14 @@ fetch_archive_declare(
 )
 list(APPEND FETCH_PENDING "imgui")
 
+# Import OpenGL Mathematics for vector/matrix types.
+fetch_archive_declare(
+    glm
+    GIT_REPOSITORY https://github.com/g-truc/glm
+    GIT_TAG 1.0.2
+)
+list(APPEND FETCH_PENDING "glm")
+
 # Populate all of the pending content.
 foreach(CONTENT_NAME IN LISTS FETCH_PENDING)
     message(STATUS "Fetching sources for ${CONTENT_NAME}...")

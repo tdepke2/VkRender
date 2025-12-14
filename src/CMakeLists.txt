@@ -22,6 +22,7 @@ target_link_libraries(vkr_src PUBLIC
     GPUOpen::VulkanMemoryAllocator
     spdlog::spdlog
     imgui-vulkan::imgui-vulkan
+    glm::glm
 )
 vkr_add_cxx_properties(vkr_src)
 
@@ -35,4 +36,8 @@ include(../cmake/TargetShaders.cmake)
 
 target_glsl_shaders(vk_render BASE_DIR "${CMAKE_SOURCE_DIR}/shaders" SOURCES
     "gradient.comp"
+    "gradient_color.comp"
+    "colored_triangle.frag"
+    "colored_triangle.vert"
+    "colored_triangle_mesh.vert"
 )
