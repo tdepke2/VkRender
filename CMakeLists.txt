@@ -119,6 +119,15 @@ fetch_archive_declare(
 )
 list(APPEND FETCH_PENDING "glm")
 
+# Import fastgltf for glTF 2.0 model loading.
+fetch_archive_declare(
+    fastgltf
+    GIT_REPOSITORY https://github.com/spnda/fastgltf
+    GIT_TAG v0.9.0
+    GIT_SHALLOW TRUE    # FIXME: found this from fastgltf cmake scripts, should use for all dependencies? they also set `SOURCE_SUBDIR doesnt-exist` and then manually define the target which is interesting.
+)
+list(APPEND FETCH_PENDING "fastgltf")
+
 # Populate all of the pending content.
 foreach(CONTENT_NAME IN LISTS FETCH_PENDING)
     message(STATUS "Fetching sources for ${CONTENT_NAME}...")

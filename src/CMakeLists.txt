@@ -5,6 +5,8 @@ add_library(vkr_src
     Descriptors.h
     Engine.cpp
     Engine.h
+    Loader.cpp
+    Loader.h
     Pipelines.cpp
     Pipelines.h
     VmaUsage.cpp
@@ -23,6 +25,7 @@ target_link_libraries(vkr_src PUBLIC
     spdlog::spdlog
     imgui-vulkan::imgui-vulkan
     glm::glm
+    fastgltf::fastgltf
 )
 vkr_add_cxx_properties(vkr_src)
 
