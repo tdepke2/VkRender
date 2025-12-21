@@ -5,6 +5,7 @@
 #include <span>
 
 #include <Common.h>
+#include <Loader.h>
 #include <Descriptors.h>
 
 struct SDL_Window;
@@ -15,6 +16,8 @@ struct FrameData {
 
     VkCommandPool _commandPool;
     VkCommandBuffer _mainCommandBuffer;
+
+    //DescriptorAllocatorGrowable _frameDescriptors;
 };
 
 constexpr unsigned int FRAME_OVERLAP = 2;
@@ -32,16 +35,18 @@ public:
     void run();
     void cleanup();
 
+    GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
+
 private:
     void initVulkan();
     void initSwapchain();
     void createSwapchain(uint32_t width, uint32_t height);
+    void resizeSwapchain();
     void destroySwapchain();
     void initCommands();
     void initSyncStructures();
     void initDescriptors();
     void initPipelines();
-    void initTrianglePipeline();
     void initMeshPipeline();
     void initImGui();
     void initDefaultData();
@@ -54,11 +59,10 @@ private:
     void immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function);
     AllocatedBuffer createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
     void destroyBuffer(const AllocatedBuffer& buffer);
-    GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
 
     int _frameNumber {0};
 
-    vk::Extent2D windowExtent_ = { 1700 , 900 };
+    vk::Extent2D windowExtent_ = { 17 * 40 , 9 * 40 };
     SDL_Window* window_ = nullptr;
 
     vk::raii::Context context_;
@@ -83,6 +87,7 @@ private:
     FrameData _frames[FRAME_OVERLAP];
 
     AllocatedImage drawImage_;
+    AllocatedImage _depthImage;
     VkExtent2D _drawExtent;
 
     DescriptorAllocator globalDescriptorAllocator;
@@ -106,14 +111,15 @@ private:
 
     VkDescriptorPool imguiPool;
 
-    VkPipelineLayout _trianglePipelineLayout;
-    VkPipeline _trianglePipeline;
-
     VkPipelineLayout _meshPipelineLayout;
     VkPipeline _meshPipeline;
 
-    GPUMeshBuffers rectangle;
+    std::vector<std::shared_ptr<MeshAsset>> testMeshes;
+
+    //GPUSceneData sceneData;
+    //VkDescriptorSetLayout _gpuSceneDataDescriptorLayout;
 
     bool resize_requested{ false };
     bool freeze_rendering{ false };
+    float renderScale = 1.0f;
 };

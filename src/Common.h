@@ -10,6 +10,10 @@
 
 #include <spdlog/fmt/bundled/base.h>
 
+// FIXME: I don't like this, why is it needed? I had to set this once we introduced perspective projection with 10000 near and 0.1 far planes.
+// Setting it here isn't good either. It could go in cmake scripts.
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
+
 #include <glm/mat4x4.hpp>
 #include <glm/vec4.hpp>
 
@@ -53,6 +57,15 @@ struct GPUDrawPushConstants {
     glm::mat4 worldMatrix;
     VkDeviceAddress vertexBuffer;
 };
+
+/*struct GPUSceneData {
+    glm::mat4 view;
+    glm::mat4 proj;
+    glm::mat4 viewproj;
+    glm::vec4 ambientColor;
+    glm::vec4 sunlightDirection; // w for sun power
+    glm::vec4 sunlightColor;
+};*/
 
 #define VK_CHECK(x)                                                     \
     do {                                                                \

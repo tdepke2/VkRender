@@ -4,14 +4,13 @@
 #include "Engine.h"
 
 #include <fastgltf/glm_element_traits.hpp>
-#include <fastgltf/parser.hpp>
+#include <fastgltf/core.hpp>
 #include <fastgltf/tools.hpp>
 
 std::optional<std::vector<std::shared_ptr<MeshAsset>>> loadGltfMeshes(Engine* engine, std::filesystem::path filePath) {
     std::cout << "Loading GLTF: " << filePath << std::endl;
 
-    fastgltf::GltfDataBuffer data;
-    data.loadFromFile(filePath);
+    auto data = fastgltf::GltfDataBuffer::FromPath(filePath);
 
     constexpr auto gltfOptions = fastgltf::Options::LoadGLBBuffers
         | fastgltf::Options::LoadExternalBuffers;
@@ -19,7 +18,7 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> loadGltfMeshes(Engine* en
     fastgltf::Asset gltf;
     fastgltf::Parser parser {};
 
-    auto load = parser.loadBinaryGLTF(&data, filePath.parent_path(), gltfOptions);
+    auto load = parser.loadGltfBinary(data.get(), filePath.parent_path(), gltfOptions);
     if (load) {
         gltf = std::move(load.get());
     } else {
@@ -62,7 +61,7 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> loadGltfMeshes(Engine* en
 
             // load vertex positions
             {
-                fastgltf::Accessor& posAccessor = gltf.accessors[p.findAttribute("POSITION")->second];
+                fastgltf::Accessor& posAccessor = gltf.accessors[p.findAttribute("POSITION")->accessorIndex];
                 vertices.resize(vertices.size() + posAccessor.count);
 
                 fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, posAccessor,
@@ -81,7 +80,7 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> loadGltfMeshes(Engine* en
             auto normals = p.findAttribute("NORMAL");
             if (normals != p.attributes.end()) {
 
-                fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, gltf.accessors[(*normals).second],
+                fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, gltf.accessors[(*normals).accessorIndex],
                     [&](glm::vec3 v, size_t index) {
                         vertices[initial_vtx + index].normal = v;
                     });
@@ -91,7 +90,7 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> loadGltfMeshes(Engine* en
             auto uv = p.findAttribute("TEXCOORD_0");
             if (uv != p.attributes.end()) {
 
-                fastgltf::iterateAccessorWithIndex<glm::vec2>(gltf, gltf.accessors[(*uv).second],
+                fastgltf::iterateAccessorWithIndex<glm::vec2>(gltf, gltf.accessors[(*uv).accessorIndex],
                     [&](glm::vec2 v, size_t index) {
                         vertices[initial_vtx + index].uv_x = v.x;
                         vertices[initial_vtx + index].uv_y = v.y;
@@ -102,7 +101,7 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> loadGltfMeshes(Engine* en
             auto colors = p.findAttribute("COLOR_0");
             if (colors != p.attributes.end()) {
 
-                fastgltf::iterateAccessorWithIndex<glm::vec4>(gltf, gltf.accessors[(*colors).second],
+                fastgltf::iterateAccessorWithIndex<glm::vec4>(gltf, gltf.accessors[(*colors).accessorIndex],
                     [&](glm::vec4 v, size_t index) {
                         vertices[initial_vtx + index].color = v;
                     });

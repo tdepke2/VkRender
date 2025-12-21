@@ -1,3 +1,5 @@
+#pragma once
+
 #include <Common.h>
 #include <unordered_map>
 #include <filesystem>
