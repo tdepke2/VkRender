@@ -283,6 +283,14 @@ void Engine::cleanup() {
         destroyBuffer(mesh->meshBuffers.vertexBuffer);
     }
 
+    vkDestroySampler(*device_, _defaultSamplerNearest, nullptr);
+    vkDestroySampler(*device_, _defaultSamplerLinear, nullptr);
+
+    destroyImage(_whiteImage);
+    destroyImage(_greyImage);
+    destroyImage(_blackImage);
+    destroyImage(_errorCheckerboardImage);
+
     ImGui_ImplVulkan_Shutdown();
     ImGui_ImplSDL3_Shutdown();
     ImGui::DestroyContext();
@@ -658,7 +666,8 @@ void Engine::initDescriptors() {
     //create a descriptor pool that will hold 10 sets with 1 image each
     std::vector<DescriptorAllocator::PoolSizeRatio> sizes =
     {
-        { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1 }
+        { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1 },
+        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1},
     };
 
     globalDescriptorAllocator.init_pool(*device_, 10, sizes);
@@ -696,6 +705,17 @@ void Engine::initDescriptors() {
         _frames[i]._frameDescriptors = DescriptorAllocatorGrowable{};
         _frames[i]._frameDescriptors.init(*device_, 1000, frame_sizes);
     }*/
+
+    {
+        DescriptorLayoutBuilder builder;
+        builder.add_binding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+        _singleImageDescriptorLayout = builder.build(*device_, VK_SHADER_STAGE_FRAGMENT_BIT);
+    }
+
+    _singleImageDescriptors = globalDescriptorAllocator.allocate(*device_, _singleImageDescriptorLayout);
+    DescriptorWriter writer2;
+    writer2.write_image(0, *_errorCheckerboardImage.imageView, _defaultSamplerNearest, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+    writer2.update_set(*device_, _singleImageDescriptors);
 }
 
 void Engine::initPipelines() {
@@ -743,7 +763,7 @@ void Engine::initPipelines() {
 
 void Engine::initMeshPipeline() {
     VkShaderModule triangleFragShader;
-    if (!loadShaderModule("shaders/colored_triangle.frag.spv", *device_, &triangleFragShader)) {
+    if (!loadShaderModule("shaders/tex_image.frag.spv", *device_, &triangleFragShader)) {
         fmt::print("Error when building the triangle fragment shader module");
     }
     else {
@@ -766,7 +786,8 @@ void Engine::initMeshPipeline() {
     VkPipelineLayoutCreateInfo pipeline_layout_info = { .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
     pipeline_layout_info.pPushConstantRanges = &bufferRange;
     pipeline_layout_info.pushConstantRangeCount = 1;
-
+    pipeline_layout_info.pSetLayouts = &_singleImageDescriptorLayout;
+    pipeline_layout_info.setLayoutCount = 1;
     VK_CHECK(vkCreatePipelineLayout(*device_, &pipeline_layout_info, nullptr, &_meshPipelineLayout));
 
     PipelineBuilder pipelineBuilder;
@@ -879,6 +900,40 @@ void Engine::initDefaultData() {
     rect_indices[5] = 3;
 
     rectangle = uploadMesh(rect_indices,rect_vertices);*/
+
+    //3 default textures, white, grey, black. 1 pixel each
+    uint32_t white = glm::packUnorm4x8(glm::vec4(1, 1, 1, 1));
+    _whiteImage = createImage((void*)&white, vk::Extent3D{ 1, 1, 1 }, vk::Format::eR8G8B8A8Unorm,
+        vk::ImageUsageFlagBits::eSampled);
+
+    uint32_t grey = glm::packUnorm4x8(glm::vec4(0.66f, 0.66f, 0.66f, 1));
+    _greyImage = createImage((void*)&grey, vk::Extent3D{ 1, 1, 1 }, vk::Format::eR8G8B8A8Unorm,
+        vk::ImageUsageFlagBits::eSampled);
+
+    uint32_t black = glm::packUnorm4x8(glm::vec4(0, 0, 0, 0));
+    _blackImage = createImage((void*)&black, vk::Extent3D{ 1, 1, 1 }, vk::Format::eR8G8B8A8Unorm,
+        vk::ImageUsageFlagBits::eSampled);
+
+    //checkerboard image
+    uint32_t magenta = glm::packUnorm4x8(glm::vec4(1, 0, 1, 1));
+    std::array<uint32_t, 16 *16 > pixels; //for 16x16 checkerboard texture
+    for (int x = 0; x < 16; x++) {
+        for (int y = 0; y < 16; y++) {
+            pixels[y*16 + x] = ((x % 2) ^ (y % 2)) ? magenta : black;
+        }
+    }
+    _errorCheckerboardImage = createImage(pixels.data(), vk::Extent3D{16, 16, 1}, vk::Format::eR8G8B8A8Unorm,
+        vk::ImageUsageFlagBits::eSampled);
+
+    vk::SamplerCreateInfo sampl = {
+        .magFilter = vk::Filter::eNearest,
+        .minFilter = vk::Filter::eNearest
+    };
+    _defaultSamplerNearest = device_.createSampler(sampl);
+
+    sampl.magFilter = vk::Filter::eLinear;
+    sampl.minFilter = vk::Filter::eLinear;
+    _defaultSamplerLinear = device_.createSampler(sampl);
 
     testMeshes = loadGltfMeshes(this,"assets/basicmesh.glb").value();
 }
@@ -1061,6 +1116,9 @@ void Engine::drawGeometry(vk::CommandBuffer cmd) {
     writer.write_buffer(0, gpuSceneDataBuffer.buffer, sizeof(GPUSceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
     writer.update_set(*device_, globalDescriptor);*/
 
+    //bind a texture
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _meshPipelineLayout, 0, 1, &_singleImageDescriptors, 0, nullptr);
+
     glm::mat4 view = glm::translate(glm::vec3{ 0,0,-5 });
     // camera projection
     glm::mat4 projection = glm::perspective(glm::radians(70.f), (float)_drawExtent.width / (float)_drawExtent.height, 10000.f, 0.1f);
@@ -1148,4 +1206,102 @@ AllocatedBuffer Engine::createBuffer(size_t allocSize, VkBufferUsageFlags usage,
 
 void Engine::destroyBuffer(const AllocatedBuffer& buffer) {
     vmaDestroyBuffer(allocator_, buffer.buffer, buffer.allocation);
+}
+
+AllocatedImage Engine::createImage(vk::Extent3D size, vk::Format format, vk::ImageUsageFlags usage, bool mipmapped)
+{
+    AllocatedImage newImage;
+    newImage.imageFormat = format;
+    newImage.imageExtent = size;
+
+    vk::ImageCreateInfo img_info = {
+        .imageType = vk::ImageType::e2D,
+        .format = format,
+        .extent = size,
+        .mipLevels = 1,
+        .arrayLayers = 1,
+        .samples = vk::SampleCountFlagBits::e1,
+        .tiling = vk::ImageTiling::eOptimal,
+        .usage = usage
+    };
+    if (mipmapped) {
+        img_info.mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(size.width, size.height)))) + 1;
+    }
+
+    // always allocate images on dedicated GPU memory
+    VmaAllocationCreateInfo allocinfo = {};
+    allocinfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+    allocinfo.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
+    // allocate and create the image
+    VkImage image = {};
+    VK_CHECK(vmaCreateImage(allocator_, &(*img_info), &allocinfo, &image, &newImage.allocation, nullptr));
+    newImage.image = image;
+
+    // if the format is a depth format, we will need to have it use the correct
+    // aspect flag
+    vk::ImageAspectFlags aspectFlag = vk::ImageAspectFlagBits::eColor;
+    if (format == vk::Format::eD32Sfloat) {
+        aspectFlag = vk::ImageAspectFlagBits::eDepth;
+    }
+
+    // build a image-view for the image
+    vk::ImageViewCreateInfo view_info = {
+        .image = newImage.image,
+        .viewType = vk::ImageViewType::e2D,
+        .format = format,
+        .subresourceRange = {
+            .aspectMask = aspectFlag,
+            .baseMipLevel = 0,
+            .levelCount = img_info.mipLevels,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        },
+    };
+
+    newImage.imageView = device_.createImageView(view_info);
+
+    return newImage;
+}
+
+AllocatedImage Engine::createImage(void* data, vk::Extent3D size, vk::Format format, vk::ImageUsageFlags usage, bool mipmapped)
+{
+    size_t data_size = size.depth * size.width * size.height * 4;
+    AllocatedBuffer uploadbuffer = createBuffer(data_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+
+    memcpy(uploadbuffer.info.pMappedData, data, data_size);
+
+    AllocatedImage new_image = createImage(size, format, usage | vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eTransferSrc, mipmapped);
+
+    immediateSubmit([&](VkCommandBuffer cmd) {
+        transitionImage(cmd, new_image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+        VkBufferImageCopy copyRegion = {};
+        copyRegion.bufferOffset = 0;
+        copyRegion.bufferRowLength = 0;
+        copyRegion.bufferImageHeight = 0;
+
+        copyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        copyRegion.imageSubresource.mipLevel = 0;
+        copyRegion.imageSubresource.baseArrayLayer = 0;
+        copyRegion.imageSubresource.layerCount = 1;
+        copyRegion.imageExtent = size;
+
+        // copy the buffer into the image
+        vkCmdCopyBufferToImage(cmd, uploadbuffer.buffer, new_image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
+            &copyRegion);
+
+        transitionImage(cmd, new_image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        });
+
+    destroyBuffer(uploadbuffer);
+
+    return new_image;
+}
+
+void Engine::destroyImage(AllocatedImage& img)
+{
+    img.imageView.clear();
+    vmaDestroyImage(allocator_, img.image, img.allocation);
 }

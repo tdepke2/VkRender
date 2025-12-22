@@ -59,6 +59,9 @@ private:
     void immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function);
     AllocatedBuffer createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
     void destroyBuffer(const AllocatedBuffer& buffer);
+    AllocatedImage createImage(vk::Extent3D size, vk::Format format, vk::ImageUsageFlags usage, bool mipmapped = false);
+    AllocatedImage createImage(void* data, vk::Extent3D size, vk::Format format, vk::ImageUsageFlags usage, bool mipmapped = false);
+    void destroyImage(AllocatedImage& img);
 
     int _frameNumber {0};
 
@@ -118,6 +121,17 @@ private:
 
     //GPUSceneData sceneData;
     //VkDescriptorSetLayout _gpuSceneDataDescriptorLayout;
+
+    AllocatedImage _whiteImage;
+    AllocatedImage _blackImage;
+    AllocatedImage _greyImage;
+    AllocatedImage _errorCheckerboardImage;
+
+    vk::Sampler _defaultSamplerLinear;
+    vk::Sampler _defaultSamplerNearest;
+
+    VkDescriptorSet _singleImageDescriptors;
+    VkDescriptorSetLayout _singleImageDescriptorLayout;
 
     bool resize_requested{ false };
     bool freeze_rendering{ false };

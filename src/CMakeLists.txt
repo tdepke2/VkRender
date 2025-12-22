@@ -43,4 +43,5 @@ target_glsl_shaders(vk_render BASE_DIR "${CMAKE_SOURCE_DIR}/shaders" SOURCES
     "colored_triangle.frag"
     "colored_triangle.vert"
     "colored_triangle_mesh.vert"
+    "tex_image.frag"
 )
