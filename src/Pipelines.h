@@ -2,48 +2,51 @@
 
 #include <Common.h>
 
-bool loadShaderModule(const char* filePath, VkDevice device, VkShaderModule* outShaderModule);
+vk::raii::ShaderModule createShaderModule(const std::string& filename, const vk::raii::Device& device);
 
 class PipelineBuilder {
 public:
-    std::vector<VkPipelineShaderStageCreateInfo> _shaderStages;
-
-    VkPipelineInputAssemblyStateCreateInfo _inputAssembly;
-    VkPipelineRasterizationStateCreateInfo _rasterizer;
-    VkPipelineColorBlendAttachmentState _colorBlendAttachment;
-    VkPipelineMultisampleStateCreateInfo _multisampling;
-    VkPipelineLayout _pipelineLayout;
-    VkPipelineDepthStencilStateCreateInfo _depthStencil;
-    VkPipelineRenderingCreateInfo _renderInfo;
-    VkFormat _colorAttachmentformat;
-
-    PipelineBuilder(){ clear(); }
+    PipelineBuilder();
 
     void clear();
 
-    VkPipeline build_pipeline(VkDevice device);
+    vk::raii::Pipeline buildPipeline(const vk::raii::Device& device);
 
-    void set_shaders(VkShaderModule vertexShader, VkShaderModule fragmentShader);
+    void setPipelineLayout(vk::PipelineLayout pipelineLayout);
 
-    void set_input_topology(VkPrimitiveTopology topology);
+    void setShaders(vk::ShaderModule vertexShader, vk::ShaderModule fragmentShader);
 
-    void set_polygon_mode(VkPolygonMode mode);
+    void setInputTopology(vk::PrimitiveTopology topology);
 
-    void set_cull_mode(VkCullModeFlags cullMode, VkFrontFace frontFace);
+    void setPolygonMode(vk::PolygonMode mode);
 
-    void set_multisampling_none();
+    void setCullMode(vk::CullModeFlags cullMode, vk::FrontFace frontFace);
 
-    void disable_blending();
+    void setMultisamplingNone();
 
-    void enable_blending_additive();
+    void disableBlending();
 
-    void enable_blending_alphablend();
+    void enableBlendingAdditive();
 
-    void set_color_attachment_format(VkFormat format);
+    void enableBlendingAlphablend();
 
-    void set_depth_format(VkFormat format);
+    void setColorAttachmentFormat(vk::Format format);
 
-    void disable_depthtest();
+    void setDepthFormat(vk::Format format);
 
-    void enable_depthtest(bool depthWriteEnable, VkCompareOp op);
+    void disableDepthtest();
+
+    void enableDepthtest(bool depthWriteEnable, vk::CompareOp op);
+
+private:
+    std::vector<vk::PipelineShaderStageCreateInfo> shaderStages_;
+
+    vk::PipelineInputAssemblyStateCreateInfo inputAssembly_;
+    vk::PipelineRasterizationStateCreateInfo rasterizer_;
+    vk::PipelineColorBlendAttachmentState colorBlendAttachment_;
+    vk::PipelineMultisampleStateCreateInfo multisampling_;
+    vk::PipelineLayout pipelineLayout_;
+    vk::PipelineDepthStencilStateCreateInfo depthStencil_;
+    vk::PipelineRenderingCreateInfo renderInfo_;
+    vk::Format colorAttachmentformat_;
 };

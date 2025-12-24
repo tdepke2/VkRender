@@ -90,7 +90,7 @@ private:
     FrameData _frames[FRAME_OVERLAP];
 
     AllocatedImage drawImage_;
-    AllocatedImage _depthImage;
+    AllocatedImage depthImage_;
     VkExtent2D _drawExtent;
 
     DescriptorAllocator globalDescriptorAllocator;
@@ -98,9 +98,9 @@ private:
     VkDescriptorSet _drawImageDescriptors;
     VkDescriptorSetLayout _drawImageDescriptorLayout;
 
-    VkPipeline _gradientPipeline;
-    VkPipelineLayout _gradientPipelineLayout;
-    ComputePushConstants _gradientConstants = {
+    vk::raii::Pipeline gradientPipeline_ = nullptr;
+    vk::raii::PipelineLayout gradientPipelineLayout_ = nullptr;
+    ComputePushConstants gradientConstants_ = {
         {1, 0, 0, 1},
         {0, 0, 1, 1},
         {0, 0, 0, 0},
@@ -114,8 +114,8 @@ private:
 
     VkDescriptorPool imguiPool;
 
-    VkPipelineLayout _meshPipelineLayout;
-    VkPipeline _meshPipeline;
+    vk::raii::PipelineLayout meshPipelineLayout_ = nullptr;
+    vk::raii::Pipeline meshPipeline_ = nullptr;
 
     std::vector<std::shared_ptr<MeshAsset>> testMeshes;
 
@@ -127,13 +127,13 @@ private:
     AllocatedImage _greyImage;
     AllocatedImage _errorCheckerboardImage;
 
-    vk::Sampler _defaultSamplerLinear;
-    vk::Sampler _defaultSamplerNearest;
+    vk::raii::Sampler _defaultSamplerLinear = nullptr;
+    vk::raii::Sampler _defaultSamplerNearest = nullptr;
 
     VkDescriptorSet _singleImageDescriptors;
     VkDescriptorSetLayout _singleImageDescriptorLayout;
 
-    bool resize_requested{ false };
+    bool resizeRequested{ false };
     bool freeze_rendering{ false };
     float renderScale = 1.0f;
 };
