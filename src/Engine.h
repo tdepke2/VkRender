@@ -20,8 +20,6 @@ struct FrameData {
     //DescriptorAllocatorGrowable _frameDescriptors;
 };
 
-constexpr unsigned int FRAME_OVERLAP = 2;
-
 struct ComputePushConstants {
     glm::vec4 data1;
     glm::vec4 data2;
@@ -31,6 +29,8 @@ struct ComputePushConstants {
 
 class Engine {
 public:
+    static constexpr unsigned int FRAME_OVERLAP = 2;
+
     void init();
     void run();
     void cleanup();
@@ -41,7 +41,7 @@ private:
     void initVulkan();
     void initSwapchain();
     void createSwapchain(uint32_t width, uint32_t height);
-    void resizeSwapchain();
+    bool resizeSwapchain();
     void destroySwapchain();
     void initCommands();
     void initSyncStructures();
@@ -51,7 +51,7 @@ private:
     void initImGui();
     void initDefaultData();
 
-    FrameData& getCurrentFrame() { return _frames[_frameNumber % FRAME_OVERLAP]; };
+    FrameData& getCurrentFrame() { return frames_[frameNumber_ % FRAME_OVERLAP]; };
     void draw();
     void drawBackground(vk::CommandBuffer cmd);
     void drawGeometry(vk::CommandBuffer cmd);
@@ -63,7 +63,7 @@ private:
     AllocatedImage createImage(void* data, vk::Extent3D size, vk::Format format, vk::ImageUsageFlags usage, bool mipmapped = false);
     void destroyImage(AllocatedImage& img);
 
-    int _frameNumber = 0;
+    uint64_t frameNumber_ = 0;
 
     vk::Extent2D windowExtent_ = { 17 * 40 , 9 * 40 };
     SDL_Window* window_ = nullptr;
@@ -87,7 +87,7 @@ private:
     std::vector<vk::Image> swapchainImages_;
     std::vector<vk::raii::ImageView> swapchainImageViews_;
 
-    FrameData _frames[FRAME_OVERLAP];
+    FrameData frames_[FRAME_OVERLAP];
 
     AllocatedImage drawImage_;
     AllocatedImage depthImage_;

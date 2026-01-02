@@ -146,13 +146,13 @@ void Engine::run() {
         }
 
         if (freeze_rendering) {
-            //throttle the speed to avoid the endless spinning
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             continue;
         }
 
-        if (resizeRequested) {
-            resizeSwapchain();
+        if (resizeRequested && !resizeSwapchain()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            continue;
         }
 
         // imgui new frame
@@ -221,13 +221,13 @@ void Engine::cleanup() {
     immCommandPool_.clear();//vkDestroyCommandPool(*device_, _immCommandPool, nullptr);
 
     for (unsigned int i = 0; i < FRAME_OVERLAP; i++) {
-        _frames[i].mainCommandBuffer.clear();
-        _frames[i].commandPool.clear();//vkDestroyCommandPool(*device_, _frames[i]._commandPool, nullptr);
+        frames_[i].mainCommandBuffer.clear();
+        frames_[i].commandPool.clear();//vkDestroyCommandPool(*device_, _frames[i]._commandPool, nullptr);
 
         //destroy sync objects
-        _frames[i].renderFence.clear();//vkDestroyFence(*device_, _frames[i]._renderFence, nullptr);
-        _frames[i].renderSemaphore.clear();//vkDestroySemaphore(*device_, _frames[i]._renderSemaphore, nullptr);
-        _frames[i].swapchainSemaphore.clear();//vkDestroySemaphore(*device_ ,_frames[i]._swapchainSemaphore, nullptr);
+        frames_[i].renderFence.clear();//vkDestroyFence(*device_, _frames[i]._renderFence, nullptr);
+        frames_[i].renderSemaphore.clear();//vkDestroySemaphore(*device_, _frames[i]._renderSemaphore, nullptr);
+        frames_[i].swapchainSemaphore.clear();//vkDestroySemaphore(*device_ ,_frames[i]._swapchainSemaphore, nullptr);
     }
 
     depthImage_.clear(allocator_);
@@ -406,19 +406,25 @@ void Engine::createSwapchain(uint32_t width, uint32_t height) {
     });
 }
 
-void Engine::resizeSwapchain() {
+bool Engine::resizeSwapchain() {
+    spdlog::debug("Engine::resizeSwapchain() called.");
     device_.waitIdle();
 
     destroySwapchain();
 
-    int width, height;
+    int width = 0, height = 0;
     SDL_GetWindowSize(window_, &width, &height);
+    if (width == 0 || height == 0) {
+        return false;
+    }
+
     windowExtent_.width = width;
     windowExtent_.height = height;
 
     createSwapchain(windowExtent_.width, windowExtent_.height);
 
     resizeRequested = false;
+    return true;
 }
 
 void Engine::destroySwapchain() {
@@ -435,16 +441,16 @@ void Engine::initCommands() {
     };
 
     for (unsigned int i = 0; i < FRAME_OVERLAP; ++i) {
-        _frames[i].commandPool = device_.createCommandPool(commandPoolInfo);
+        frames_[i].commandPool = device_.createCommandPool(commandPoolInfo);
 
         // Allocate the default command buffer that we will use for rendering.
         vk::CommandBufferAllocateInfo cmdAllocInfo = {
-            .commandPool = _frames[i].commandPool,
+            .commandPool = frames_[i].commandPool,
             .level = vk::CommandBufferLevel::ePrimary,
             .commandBufferCount = 1,
         };
 
-        _frames[i].mainCommandBuffer = std::move(device_.allocateCommandBuffers(cmdAllocInfo).front());
+        frames_[i].mainCommandBuffer = std::move(device_.allocateCommandBuffers(cmdAllocInfo).front());
     }
 
     immCommandPool_ = device_.createCommandPool(commandPoolInfo);
@@ -463,9 +469,9 @@ void Engine::initSyncStructures() {
     // One fence to control when the gpu has finished rendering the frame.
     // Two semaphores to synchronize rendering with swapchain.
     for (unsigned int i = 0; i < FRAME_OVERLAP; i++) {
-        _frames[i].swapchainSemaphore = vk::raii::Semaphore(device_, vk::SemaphoreCreateInfo());
-        _frames[i].renderSemaphore = vk::raii::Semaphore(device_, vk::SemaphoreCreateInfo());
-        _frames[i].renderFence = vk::raii::Fence(device_, { .flags = vk::FenceCreateFlagBits::eSignaled });
+        frames_[i].swapchainSemaphore = vk::raii::Semaphore(device_, vk::SemaphoreCreateInfo());
+        frames_[i].renderSemaphore = vk::raii::Semaphore(device_, vk::SemaphoreCreateInfo());
+        frames_[i].renderFence = vk::raii::Fence(device_, { .flags = vk::FenceCreateFlagBits::eSignaled });
     }
 
     immFence_ = vk::raii::Fence(device_, { .flags = vk::FenceCreateFlagBits::eSignaled });
@@ -734,15 +740,15 @@ void Engine::initDefaultData() {
 void Engine::draw() {
     // Wait until the gpu has finished rendering the last frame, timeout of 1 second.
     device_.waitForFences(*getCurrentFrame().renderFence, vk::True, 1000000000);    // FIXME: need to VK_CHECK() this
-    device_.resetFences(*getCurrentFrame().renderFence);
 
     //getCurrentFrame()._frameDescriptors.clear_pools(*device_);
 
     // Request image from the swapchain.
-    uint32_t swapchainImageIndex;
+    // If we get `vk::Result::eSuboptimalKHR` we could force a resize, but the resulting image is sufficient.
+    uint32_t swapchainImageIndex = 0;
     try {
         auto result = swapchain_.acquireNextImage(1000000000, getCurrentFrame().swapchainSemaphore, nullptr);
-        if (result.first == vk::Result::eErrorOutOfDateKHR || result.first == vk::Result::eSuboptimalKHR) {
+        if (result.first == vk::Result::eErrorOutOfDateKHR) {
             resizeRequested = true;
             return;
         }
@@ -754,6 +760,9 @@ void Engine::draw() {
         }
         // FIXME: VK_CHECK() the result now
     }
+
+    // Reset the fence after checking for resize. If we reset it too early and skip this frame for a resize, the next wait for it would deadlock.
+    device_.resetFences(*getCurrentFrame().renderFence);
 
     drawExtent_.width = std::min(swapchainExtent_.width, drawImage_.imageExtent.width) * renderScale;
     drawExtent_.height = std::min(swapchainExtent_.height, drawImage_.imageExtent.height) * renderScale;
@@ -848,7 +857,7 @@ void Engine::draw() {
         // FIXME: VK_CHECK() the result now
     }
 
-    _frameNumber++;
+    frameNumber_++;
 }
 
 void Engine::drawBackground(vk::CommandBuffer cmd) {
@@ -953,7 +962,7 @@ void Engine::drawGeometry(vk::CommandBuffer cmd) {
     push_constants.vertexBuffer = testMeshes[2]->meshBuffers.vertexBufferAddress;
 
     vkCmdPushConstants(cmd, *meshPipelineLayout_, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
-    vkCmdBindIndexBuffer(cmd, testMeshes[2]->meshBuffers.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+    cmd.bindIndexBuffer(testMeshes[2]->meshBuffers.indexBuffer.buffer, 0, vk::IndexType::eUint32);
 
     cmd.drawIndexed(testMeshes[2]->surfaces[0].count, 1, testMeshes[2]->surfaces[0].startIndex, 0, 0);
 
