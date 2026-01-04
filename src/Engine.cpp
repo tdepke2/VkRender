@@ -146,12 +146,12 @@ void Engine::run() {
         }
 
         if (freeze_rendering) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
             continue;
         }
 
         if (resizeRequested && !resizeSwapchain()) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
             continue;
         }
 
@@ -213,6 +213,7 @@ void Engine::cleanup() {
 
     globalDescriptorAllocator.destroy_pool(*device_);
 
+    vkDestroyDescriptorSetLayout(*device_, _singleImageDescriptorLayout, nullptr);
     vkDestroyDescriptorSetLayout(*device_, _drawImageDescriptorLayout, nullptr);
 
     immFence_.clear();//vkDestroyFence(*device_, _immFence, nullptr);
@@ -220,13 +221,14 @@ void Engine::cleanup() {
     immCommandBuffer_.clear();
     immCommandPool_.clear();//vkDestroyCommandPool(*device_, _immCommandPool, nullptr);
 
+    renderSemaphores_.clear();
+
     for (unsigned int i = 0; i < FRAME_OVERLAP; i++) {
         frames_[i].mainCommandBuffer.clear();
         frames_[i].commandPool.clear();//vkDestroyCommandPool(*device_, _frames[i]._commandPool, nullptr);
 
         //destroy sync objects
         frames_[i].renderFence.clear();//vkDestroyFence(*device_, _frames[i]._renderFence, nullptr);
-        frames_[i].renderSemaphore.clear();//vkDestroySemaphore(*device_, _frames[i]._renderSemaphore, nullptr);
         frames_[i].swapchainSemaphore.clear();//vkDestroySemaphore(*device_ ,_frames[i]._swapchainSemaphore, nullptr);
     }
 
@@ -400,6 +402,8 @@ void Engine::createSwapchain(uint32_t width, uint32_t height) {
     swapchainExtent_ = vkbSwapchain.extent;
     swapchainImages_ = swapchain_.getImages();
 
+    spdlog::debug("Created swapchain of size {} by {} with {} images.", swapchainExtent_.width, swapchainExtent_.height, swapchainImages_.size());
+
     const auto imageViews = vkbSwapchain.get_image_views().value();
     std::transform(imageViews.begin(), imageViews.end(), std::back_inserter(swapchainImageViews_), [this](VkImageView v) {
         return vk::raii::ImageView(device_, v);
@@ -407,7 +411,6 @@ void Engine::createSwapchain(uint32_t width, uint32_t height) {
 }
 
 bool Engine::resizeSwapchain() {
-    spdlog::debug("Engine::resizeSwapchain() called.");
     device_.waitIdle();
 
     destroySwapchain();
@@ -466,12 +469,13 @@ void Engine::initCommands() {
 }
 
 void Engine::initSyncStructures() {
-    // One fence to control when the gpu has finished rendering the frame.
-    // Two semaphores to synchronize rendering with swapchain.
     for (unsigned int i = 0; i < FRAME_OVERLAP; i++) {
         frames_[i].swapchainSemaphore = vk::raii::Semaphore(device_, vk::SemaphoreCreateInfo());
-        frames_[i].renderSemaphore = vk::raii::Semaphore(device_, vk::SemaphoreCreateInfo());
         frames_[i].renderFence = vk::raii::Fence(device_, { .flags = vk::FenceCreateFlagBits::eSignaled });
+    }
+
+    for (size_t i = 0; i < swapchainImages_.size(); ++i) {
+        renderSemaphores_.emplace_back(device_, vk::SemaphoreCreateInfo());
     }
 
     immFence_ = vk::raii::Fence(device_, { .flags = vk::FenceCreateFlagBits::eSignaled });
@@ -816,8 +820,10 @@ void Engine::draw() {
         .commandBuffer = cmd,
         .deviceMask = 0
     };
+    // The render semaphores are per swapchain image, instead of per frame.
+    // See here for details: https://docs.vulkan.org/guide/latest/swapchain_semaphore_reuse.html
     vk::SemaphoreSubmitInfo signalInfo = {
-        .semaphore = getCurrentFrame().renderSemaphore,
+        .semaphore = renderSemaphores_[swapchainImageIndex],
         .value = 1,
         .stageMask = vk::PipelineStageFlagBits2::eAllGraphics,
         .deviceIndex = 0
@@ -835,12 +841,12 @@ void Engine::draw() {
     graphicsQueue_.submit2(submitInfo, getCurrentFrame().renderFence);
 
     // Prepare present, this will put the image we just rendered to into the
-    // visible window. We want to wait on the renderSemaphore for that, as it's
+    // visible window. We want to wait on the render semaphore for that, as it's
     // necessary that drawing commands have finished before the image is
     // displayed to the user.
     vk::PresentInfoKHR presentInfo = {
         .waitSemaphoreCount = 1,
-        .pWaitSemaphores = &*getCurrentFrame().renderSemaphore,
+        .pWaitSemaphores = &*renderSemaphores_[swapchainImageIndex],
         .swapchainCount = 1,
         .pSwapchains = &*swapchain_,
         .pImageIndices = &swapchainImageIndex

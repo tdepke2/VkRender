@@ -11,7 +11,7 @@
 struct SDL_Window;
 
 struct FrameData {
-    vk::raii::Semaphore swapchainSemaphore = nullptr, renderSemaphore = nullptr;
+    vk::raii::Semaphore swapchainSemaphore = nullptr;
     vk::raii::Fence renderFence = nullptr;
 
     vk::raii::CommandPool commandPool = nullptr;
@@ -88,6 +88,7 @@ private:
     std::vector<vk::raii::ImageView> swapchainImageViews_;
 
     FrameData frames_[FRAME_OVERLAP];
+    std::vector<vk::raii::Semaphore> renderSemaphores_;
 
     AllocatedImage drawImage_;
     AllocatedImage depthImage_;
