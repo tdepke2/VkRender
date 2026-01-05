@@ -56,44 +56,49 @@ void transitionImage(vk::CommandBuffer cmd, vk::Image image, vk::ImageLayout cur
     cmd.pipelineBarrier2(depInfo);
 }
 
-void copyImageToImage(VkCommandBuffer cmd, VkImage source, VkImage destination, VkExtent2D srcSize, VkExtent2D dstSize)
-{
-    VkImageBlit2 blitRegion{ .sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2, .pNext = nullptr };
+void copyImageToImage(vk::CommandBuffer cmd, vk::Image source, vk::Image destination, vk::Extent2D sourceSize, vk::Extent2D destinationSize) {
+    std::array<vk::Offset3D, 2> srcOffsets = {
+        vk::Offset3D{0, 0, 0},
+        vk::Offset3D{static_cast<int32_t>(sourceSize.width), static_cast<int32_t>(sourceSize.height), 1}
+    };
+    std::array<vk::Offset3D, 2> dstOffsets = {
+        vk::Offset3D{0, 0, 0},
+        vk::Offset3D{static_cast<int32_t>(destinationSize.width), static_cast<int32_t>(destinationSize.height), 1}
+    };
 
-    blitRegion.srcOffsets[1].x = srcSize.width;
-    blitRegion.srcOffsets[1].y = srcSize.height;
-    blitRegion.srcOffsets[1].z = 1;
+    vk::ImageBlit2 blitRegion = {
+        .srcSubresource = {
+            .aspectMask = vk::ImageAspectFlagBits::eColor,
+            .mipLevel = 0,
+            .baseArrayLayer = 0,
+            .layerCount = 1
+        },
+        .srcOffsets = srcOffsets,
+        .dstSubresource = {
+            .aspectMask = vk::ImageAspectFlagBits::eColor,
+            .mipLevel = 0,
+            .baseArrayLayer = 0,
+            .layerCount = 1
+        },
+        .dstOffsets = dstOffsets
+    };
 
-    blitRegion.dstOffsets[1].x = dstSize.width;
-    blitRegion.dstOffsets[1].y = dstSize.height;
-    blitRegion.dstOffsets[1].z = 1;
+    vk::BlitImageInfo2 blitInfo = {
+        .srcImage = source,
+        .srcImageLayout = vk::ImageLayout::eTransferSrcOptimal,
+        .dstImage = destination,
+        .dstImageLayout = vk::ImageLayout::eTransferDstOptimal,
+        .regionCount = 1,
+        .pRegions = &blitRegion,
+        .filter = vk::Filter::eLinear
+    };
 
-    blitRegion.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    blitRegion.srcSubresource.baseArrayLayer = 0;
-    blitRegion.srcSubresource.layerCount = 1;
-    blitRegion.srcSubresource.mipLevel = 0;
-
-    blitRegion.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    blitRegion.dstSubresource.baseArrayLayer = 0;
-    blitRegion.dstSubresource.layerCount = 1;
-    blitRegion.dstSubresource.mipLevel = 0;
-
-    VkBlitImageInfo2 blitInfo{ .sType = VK_STRUCTURE_TYPE_BLIT_IMAGE_INFO_2, .pNext = nullptr };
-    blitInfo.dstImage = destination;
-    blitInfo.dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-    blitInfo.srcImage = source;
-    blitInfo.srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-    blitInfo.filter = VK_FILTER_LINEAR;
-    blitInfo.regionCount = 1;
-    blitInfo.pRegions = &blitRegion;
-
-    vkCmdBlitImage2(cmd, &blitInfo);
+    cmd.blitImage2(blitInfo);
 }
 
 }
 
 void Engine::init() {
-    // We initialize SDL and create a window with it.
     SDL_Init(SDL_INIT_VIDEO);
 
     // FIXME: recommended to use SDL_SetAppMetadata() after startup, see SDL api reference
@@ -127,13 +132,11 @@ void Engine::run() {
     SDL_Event event;
     bool closeWindow = false;
 
-    //main loop
     while (!closeWindow) {
-        //Handle events on queue
+        // Handle events from the queue.
         while (SDL_PollEvent(&event)) {
             ImGui_ImplSDL3_ProcessEvent(&event);
 
-            //close the window when user alt-f4s or clicks the X button
             if (event.type == SDL_EVENT_QUIT) {
                 closeWindow = true;
             }
@@ -155,12 +158,12 @@ void Engine::run() {
             continue;
         }
 
-        // imgui new frame
+        // ImGui new frame.
         ImGui_ImplVulkan_NewFrame();
         ImGui_ImplSDL3_NewFrame();
         ImGui::NewFrame();
 
-        // some imgui UI to test
+        // Some ImGui UI to test.
         //ImGui::ShowDemoWindow();
 
         if (ImGui::Begin("background")) {
@@ -172,7 +175,7 @@ void Engine::run() {
         }
         ImGui::End();
 
-        // make imgui calculate internal draw structures
+        // Tell ImGui to calculate internal draw structures.
         ImGui::Render();
 
         draw();
@@ -180,21 +183,21 @@ void Engine::run() {
 }
 
 void Engine::cleanup() {
-    //make sure the gpu has stopped doing its things
+    // Ensure the GPU has stopped doing its things.
     vkDeviceWaitIdle(*device_);
 
     for (auto& mesh : testMeshes) {
-        destroyBuffer(mesh->meshBuffers.indexBuffer);
-        destroyBuffer(mesh->meshBuffers.vertexBuffer);
+        mesh->meshBuffers.indexBuffer.clear(allocator_);
+        mesh->meshBuffers.vertexBuffer.clear(allocator_);
     }
 
     _defaultSamplerNearest.clear();
     _defaultSamplerLinear.clear();
 
-    destroyImage(_whiteImage);
-    destroyImage(_greyImage);
-    destroyImage(_blackImage);
-    destroyImage(_errorCheckerboardImage);
+    _whiteImage.clear(allocator_);
+    _greyImage.clear(allocator_);
+    _blackImage.clear(allocator_);
+    _errorCheckerboardImage.clear(allocator_);
 
     ImGui_ImplVulkan_Shutdown();
     ImGui_ImplSDL3_Shutdown();
@@ -227,7 +230,6 @@ void Engine::cleanup() {
         frames_[i].mainCommandBuffer.clear();
         frames_[i].commandPool.clear();//vkDestroyCommandPool(*device_, _frames[i]._commandPool, nullptr);
 
-        //destroy sync objects
         frames_[i].renderFence.clear();//vkDestroyFence(*device_, _frames[i]._renderFence, nullptr);
         frames_[i].swapchainSemaphore.clear();//vkDestroySemaphore(*device_ ,_frames[i]._swapchainSemaphore, nullptr);
     }
@@ -251,44 +253,39 @@ GPUMeshBuffers Engine::uploadMesh(std::span<uint32_t> indices, std::span<Vertex>
 
     GPUMeshBuffers newSurface;
 
-    //create vertex buffer
-    newSurface.vertexBuffer = createBuffer(vertexBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+    newSurface.vertexBuffer = createBuffer(vertexBufferSize, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eShaderDeviceAddress,
         VMA_MEMORY_USAGE_GPU_ONLY);
 
-    //find the adress of the vertex buffer
-    VkBufferDeviceAddressInfo deviceAdressInfo{ .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,.buffer = newSurface.vertexBuffer.buffer };
-    newSurface.vertexBufferAddress = vkGetBufferDeviceAddress(*device_, &deviceAdressInfo);
+    newSurface.vertexBufferAddress = device_.getBufferAddress({ .buffer = newSurface.vertexBuffer.buffer });
 
-    //create index buffer
-    newSurface.indexBuffer = createBuffer(indexBufferSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+    newSurface.indexBuffer = createBuffer(indexBufferSize, vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst,
         VMA_MEMORY_USAGE_GPU_ONLY);    // FIXME: vma flag is deprecated.
 
-    AllocatedBuffer staging = createBuffer(vertexBufferSize + indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+    AllocatedBuffer staging = createBuffer(vertexBufferSize + indexBufferSize, vk::BufferUsageFlagBits::eTransferSrc, VMA_MEMORY_USAGE_CPU_ONLY);
 
     void* data = staging.info.pMappedData;
 
-    // copy vertex buffer
     memcpy(data, vertices.data(), vertexBufferSize);
-    // copy index buffer
-    memcpy((char*)data + vertexBufferSize, indices.data(), indexBufferSize);
 
-    immediateSubmit([&](VkCommandBuffer cmd) {
-        VkBufferCopy vertexCopy{ 0 };
-        vertexCopy.dstOffset = 0;
-        vertexCopy.srcOffset = 0;
-        vertexCopy.size = vertexBufferSize;
+    memcpy(static_cast<char*>(data) + vertexBufferSize, indices.data(), indexBufferSize);
 
-        vkCmdCopyBuffer(cmd, staging.buffer, newSurface.vertexBuffer.buffer, 1, &vertexCopy);
+    immediateSubmit([vertexBufferSize,indexBufferSize,&staging,&newSurface](vk::CommandBuffer cmd) {
+        vk::BufferCopy vertexCopy = {
+            .srcOffset = 0,
+            .dstOffset = 0,
+            .size = vertexBufferSize
+        };
+        cmd.copyBuffer(staging.buffer, newSurface.vertexBuffer.buffer, 1, &vertexCopy);
 
-        VkBufferCopy indexCopy{ 0 };
-        indexCopy.dstOffset = 0;
-        indexCopy.srcOffset = vertexBufferSize;
-        indexCopy.size = indexBufferSize;
-
-        vkCmdCopyBuffer(cmd, staging.buffer, newSurface.indexBuffer.buffer, 1, &indexCopy);
+        vk::BufferCopy indexCopy = {
+            .srcOffset = vertexBufferSize,
+            .dstOffset = 0,
+            .size = indexBufferSize
+        };
+        cmd.copyBuffer(staging.buffer, newSurface.indexBuffer.buffer, 1, &indexCopy);
     });
 
-    destroyBuffer(staging);
+    staging.clear(allocator_);
 
     return newSurface;
 }
@@ -768,8 +765,8 @@ void Engine::draw() {
     // Reset the fence after checking for resize. If we reset it too early and skip this frame for a resize, the next wait for it would deadlock.
     device_.resetFences(*getCurrentFrame().renderFence);
 
-    drawExtent_.width = std::min(swapchainExtent_.width, drawImage_.imageExtent.width) * renderScale;
-    drawExtent_.height = std::min(swapchainExtent_.height, drawImage_.imageExtent.height) * renderScale;
+    drawExtent_.width = static_cast<uint32_t>(std::min(swapchainExtent_.width, drawImage_.imageExtent.width) * renderScale);
+    drawExtent_.height = static_cast<uint32_t>(std::min(swapchainExtent_.height, drawImage_.imageExtent.height) * renderScale);
 
     vk::CommandBuffer cmd = getCurrentFrame().mainCommandBuffer;
 
@@ -882,12 +879,13 @@ void Engine::drawBackground(vk::CommandBuffer cmd) {
     cmd.bindPipeline(vk::PipelineBindPoint::eCompute, gradientPipeline_);
 
     // Bind the descriptor set containing the draw image for the compute pipeline.
-    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, *gradientPipelineLayout_, 0, 1, &_drawImageDescriptors, 0, nullptr);
+    vk::DescriptorSet tempFIXME = _drawImageDescriptors;
+    cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, gradientPipelineLayout_, 0, 1, &tempFIXME, 0, nullptr);
 
-    vkCmdPushConstants(cmd, *gradientPipelineLayout_, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstants), &gradientConstants_);
+    cmd.pushConstants(gradientPipelineLayout_, vk::ShaderStageFlagBits::eCompute, 0, sizeof(ComputePushConstants), &gradientConstants_);
 
-    // execute the compute pipeline dispatch. We are using 16x16 workgroup size so we need to divide by it
-    vkCmdDispatch(cmd, std::ceil(drawExtent_.width / 16.0), std::ceil(drawExtent_.height / 16.0), 1);
+    // Execute the compute pipeline dispatch. We are using 16 x 16 workgroup size.
+    cmd.dispatch(static_cast<uint32_t>(std::ceil(drawExtent_.width / 16.0)), static_cast<uint32_t>(std::ceil(drawExtent_.height / 16.0)), 1);
 }
 
 void Engine::drawGeometry(vk::CommandBuffer cmd) {
@@ -952,22 +950,20 @@ void Engine::drawGeometry(vk::CommandBuffer cmd) {
     writer.write_buffer(0, gpuSceneDataBuffer.buffer, sizeof(GPUSceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
     writer.update_set(*device_, globalDescriptor);*/
 
-    //bind a texture
-    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, *meshPipelineLayout_, 0, 1, &_singleImageDescriptors, 0, nullptr);
+    vk::DescriptorSet tempFIXME = _singleImageDescriptors;
+    cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, meshPipelineLayout_, 0, 1, &tempFIXME, 0, nullptr);
 
-    glm::mat4 view = glm::translate(glm::vec3{ 0,0,-5 });
-    // camera projection
-    glm::mat4 projection = glm::perspective(glm::radians(70.f), (float)drawExtent_.width / (float)drawExtent_.height, 10000.f, 0.1f);
+    glm::mat4 view = glm::translate(glm::vec3{ 0, 0, -5 });
+    glm::mat4 projection = glm::perspective(glm::radians(70.0f), static_cast<float>(drawExtent_.width) / static_cast<float>(drawExtent_.height), 10000.0f, 0.1f);
 
-    // invert the Y direction on projection matrix so that we are more similar
-    // to opengl and gltf axis
-    projection[1][1] *= -1;
+    // Invert the Y direction on projection matrix so that we are more similar to OpenGL and gltf axis.
+    projection[1][1] *= -1.0f;
 
-    GPUDrawPushConstants push_constants;
-    push_constants.worldMatrix = projection * view;
-    push_constants.vertexBuffer = testMeshes[2]->meshBuffers.vertexBufferAddress;
+    GPUDrawPushConstants pushConstants;
+    pushConstants.worldMatrix = projection * view;
+    pushConstants.vertexBuffer = testMeshes[2]->meshBuffers.vertexBufferAddress;
 
-    vkCmdPushConstants(cmd, *meshPipelineLayout_, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
+    cmd.pushConstants(meshPipelineLayout_, vk::ShaderStageFlagBits::eVertex, 0, sizeof(GPUDrawPushConstants), &pushConstants);
     cmd.bindIndexBuffer(testMeshes[2]->meshBuffers.indexBuffer.buffer, 0, vk::IndexType::eUint32);
 
     cmd.drawIndexed(testMeshes[2]->surfaces[0].count, 1, testMeshes[2]->surfaces[0].startIndex, 0, 0);
@@ -1027,37 +1023,30 @@ void Engine::immediateSubmit(std::function<void(vk::CommandBuffer cmd)>&& functi
     device_.waitForFences(*immFence_, vk::True, std::numeric_limits<uint64_t>::max());    // FIXME: need to VK_CHECK() this
 }
 
-AllocatedBuffer Engine::createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage) {
-    // allocate buffer
-    VkBufferCreateInfo bufferInfo = {.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-    bufferInfo.pNext = nullptr;
-    bufferInfo.size = allocSize;
+AllocatedBuffer Engine::createBuffer(size_t allocSize, vk::BufferUsageFlags usage, VmaMemoryUsage memoryUsage) {
+    vk::BufferCreateInfo bufferInfo = {
+        .size = allocSize,
+        .usage = usage
+    };
 
-    bufferInfo.usage = usage;
+    VmaAllocationCreateInfo allocInfo = {};
+    allocInfo.usage = memoryUsage;
+    allocInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
 
-    VmaAllocationCreateInfo vmaallocInfo = {};
-    vmaallocInfo.usage = memoryUsage;
-    vmaallocInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
     AllocatedBuffer newBuffer;
-
-    // allocate the buffer
-    VK_CHECK(vmaCreateBuffer(allocator_, &bufferInfo, &vmaallocInfo, &newBuffer.buffer, &newBuffer.allocation,
-        &newBuffer.info));
+    VkBuffer buffer = {};
+    VK_CHECK(vmaCreateBuffer(allocator_, &*bufferInfo, &allocInfo, &buffer, &newBuffer.allocation, &newBuffer.info));
+    newBuffer.buffer = buffer;
 
     return newBuffer;
 }
 
-void Engine::destroyBuffer(const AllocatedBuffer& buffer) {
-    vmaDestroyBuffer(allocator_, buffer.buffer, buffer.allocation);
-}
-
-AllocatedImage Engine::createImage(vk::Extent3D size, vk::Format format, vk::ImageUsageFlags usage, bool mipmapped)
-{
+AllocatedImage Engine::createImage(vk::Extent3D size, vk::Format format, vk::ImageUsageFlags usage, bool mipmapped) {
     AllocatedImage newImage;
     newImage.imageFormat = format;
     newImage.imageExtent = size;
 
-    vk::ImageCreateInfo img_info = {
+    vk::ImageCreateInfo imageInfo = {
         .imageType = vk::ImageType::e2D,
         .format = format,
         .extent = size,
@@ -1068,82 +1057,73 @@ AllocatedImage Engine::createImage(vk::Extent3D size, vk::Format format, vk::Ima
         .usage = usage
     };
     if (mipmapped) {
-        img_info.mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(size.width, size.height)))) + 1;
+        imageInfo.mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(size.width, size.height)))) + 1;
     }
 
-    // always allocate images on dedicated GPU memory
-    VmaAllocationCreateInfo allocinfo = {};
-    allocinfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
-    allocinfo.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    // Always allocate images on dedicated GPU memory.
+    VmaAllocationCreateInfo allocInfo = {};
+    allocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+    allocInfo.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 
-    // allocate and create the image
     VkImage image = {};
-    VK_CHECK(vmaCreateImage(allocator_, &(*img_info), &allocinfo, &image, &newImage.allocation, nullptr));
+    VK_CHECK(vmaCreateImage(allocator_, &*imageInfo, &allocInfo, &image, &newImage.allocation, nullptr));
     newImage.image = image;
 
-    // if the format is a depth format, we will need to have it use the correct
-    // aspect flag
+    // If the format is a depth format, we will need to have it use the correct aspect flag.
     vk::ImageAspectFlags aspectFlag = vk::ImageAspectFlagBits::eColor;
     if (format == vk::Format::eD32Sfloat) {
         aspectFlag = vk::ImageAspectFlagBits::eDepth;
     }
 
-    // build a image-view for the image
-    vk::ImageViewCreateInfo view_info = {
+    // Build an image-view for the image.
+    vk::ImageViewCreateInfo viewInfo = {
         .image = newImage.image,
         .viewType = vk::ImageViewType::e2D,
         .format = format,
         .subresourceRange = {
             .aspectMask = aspectFlag,
             .baseMipLevel = 0,
-            .levelCount = img_info.mipLevels,
+            .levelCount = imageInfo.mipLevels,
             .baseArrayLayer = 0,
             .layerCount = 1,
         },
     };
 
-    newImage.imageView = device_.createImageView(view_info);
+    newImage.imageView = device_.createImageView(viewInfo);
 
     return newImage;
 }
 
-AllocatedImage Engine::createImage(void* data, vk::Extent3D size, vk::Format format, vk::ImageUsageFlags usage, bool mipmapped)
-{
-    size_t data_size = size.depth * size.width * size.height * 4;
-    AllocatedBuffer uploadbuffer = createBuffer(data_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+AllocatedImage Engine::createImage(void* data, vk::Extent3D size, vk::Format format, vk::ImageUsageFlags usage, bool mipmapped) {
+    size_t dataSize = size.depth * size.width * size.height * 4;
+    AllocatedBuffer uploadbuffer = createBuffer(dataSize, vk::BufferUsageFlagBits::eTransferSrc, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
-    memcpy(uploadbuffer.info.pMappedData, data, data_size);
+    memcpy(uploadbuffer.info.pMappedData, data, dataSize);
 
-    AllocatedImage new_image = createImage(size, format, usage | vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eTransferSrc, mipmapped);
+    AllocatedImage newImage = createImage(size, format, usage | vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eTransferSrc, mipmapped);
 
-    immediateSubmit([&](VkCommandBuffer cmd) {
-        transitionImage(cmd, new_image.image, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
+    immediateSubmit([&size,&uploadbuffer,&newImage](vk::CommandBuffer cmd) {
+        transitionImage(cmd, newImage.image, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
 
-        VkBufferImageCopy copyRegion = {};
-        copyRegion.bufferOffset = 0;
-        copyRegion.bufferRowLength = 0;
-        copyRegion.bufferImageHeight = 0;
+        vk::BufferImageCopy copyRegion = {
+            .bufferOffset = 0,
+            .bufferRowLength = 0,
+            .bufferImageHeight = 0,
+            .imageSubresource = {
+                .aspectMask = vk::ImageAspectFlagBits::eColor,
+                .mipLevel = 0,
+                .baseArrayLayer = 0,
+                .layerCount = 1,
+            },
+            .imageExtent = size
+        };
 
-        copyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        copyRegion.imageSubresource.mipLevel = 0;
-        copyRegion.imageSubresource.baseArrayLayer = 0;
-        copyRegion.imageSubresource.layerCount = 1;
-        copyRegion.imageExtent = size;
+        cmd.copyBufferToImage(uploadbuffer.buffer, newImage.image, vk::ImageLayout::eTransferDstOptimal, 1, &copyRegion);
 
-        // copy the buffer into the image
-        vkCmdCopyBufferToImage(cmd, uploadbuffer.buffer, new_image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
-            &copyRegion);
+        transitionImage(cmd, newImage.image, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal);
+    });
 
-        transitionImage(cmd, new_image.image, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal);
-        });
+    uploadbuffer.clear(allocator_);
 
-    destroyBuffer(uploadbuffer);
-
-    return new_image;
-}
-
-void Engine::destroyImage(AllocatedImage& img)
-{
-    img.imageView.clear();
-    vmaDestroyImage(allocator_, img.image, img.allocation);
+    return newImage;
 }

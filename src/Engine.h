@@ -57,11 +57,9 @@ private:
     void drawGeometry(vk::CommandBuffer cmd);
     void drawImGui(vk::CommandBuffer cmd, vk::ImageView targetImageView);
     void immediateSubmit(std::function<void(vk::CommandBuffer cmd)>&& function);
-    AllocatedBuffer createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
-    void destroyBuffer(const AllocatedBuffer& buffer);
+    AllocatedBuffer createBuffer(size_t allocSize, vk::BufferUsageFlags usage, VmaMemoryUsage memoryUsage);
     AllocatedImage createImage(vk::Extent3D size, vk::Format format, vk::ImageUsageFlags usage, bool mipmapped = false);
     AllocatedImage createImage(void* data, vk::Extent3D size, vk::Format format, vk::ImageUsageFlags usage, bool mipmapped = false);
-    void destroyImage(AllocatedImage& img);
 
     uint64_t frameNumber_ = 0;
 
