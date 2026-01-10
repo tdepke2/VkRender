@@ -202,7 +202,7 @@ void Engine::cleanup() {
     ImGui_ImplVulkan_Shutdown();
     ImGui_ImplSDL3_Shutdown();
     ImGui::DestroyContext();
-    vkDestroyDescriptorPool(*device_, imguiPool, nullptr);
+    imguiPool.clear();//vkDestroyDescriptorPool(*device_, imguiPool, nullptr);
 
     meshPipelineLayout_.clear();//vkDestroyPipelineLayout(*device_, _meshPipelineLayout, nullptr);
     meshPipeline_.clear();//vkDestroyPipeline(*device_, _meshPipeline, nullptr);
@@ -214,10 +214,12 @@ void Engine::cleanup() {
         _frames[i]._frameDescriptors.destroy_pools(*device_);
     }*/
 
-    globalDescriptorAllocator.destroy_pool(*device_);
+    _singleImageDescriptors.clear();
+    _singleImageDescriptorLayout.clear();//vkDestroyDescriptorSetLayout(*device_, _singleImageDescriptorLayout, nullptr);
+    _drawImageDescriptors.clear();
+    _drawImageDescriptorLayout.clear();//vkDestroyDescriptorSetLayout(*device_, _drawImageDescriptorLayout, nullptr);
 
-    vkDestroyDescriptorSetLayout(*device_, _singleImageDescriptorLayout, nullptr);
-    vkDestroyDescriptorSetLayout(*device_, _drawImageDescriptorLayout, nullptr);
+    globalDescriptorAllocator.destroyPool();
 
     immFence_.clear();//vkDestroyFence(*device_, _immFence, nullptr);
 
@@ -479,29 +481,27 @@ void Engine::initSyncStructures() {
 }
 
 void Engine::initDescriptors() {
-    //create a descriptor pool that will hold 10 sets with 1 image each
-    std::vector<DescriptorAllocator::PoolSizeRatio> sizes =
-    {
-        { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1 },
-        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1},
+    // Create a descriptor pool that will hold 10 sets with 1 image/sampler each.
+    std::vector<DescriptorAllocator::PoolSizeRatio> sizes = {
+        { vk::DescriptorType::eStorageImage, 1 },
+        { vk::DescriptorType::eCombinedImageSampler, 1 }
     };
 
-    globalDescriptorAllocator.init_pool(*device_, 10, sizes);
+    globalDescriptorAllocator.initPool(device_, 10, sizes);
 
-    //make the descriptor set layout for our compute draw
+    // Descriptor set for our compute draw.
     {
         DescriptorLayoutBuilder builder;
-        builder.add_binding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-        _drawImageDescriptorLayout = builder.build(*device_, VK_SHADER_STAGE_COMPUTE_BIT);
+        builder.addBinding(0, vk::DescriptorType::eStorageImage);
+        _drawImageDescriptorLayout = builder.build(device_, vk::ShaderStageFlagBits::eCompute);
+
+        _drawImageDescriptors = globalDescriptorAllocator.allocate(device_, _drawImageDescriptorLayout);
+
+        DescriptorWriter writer;
+        writer.writeImage(0, *drawImage_.imageView, nullptr, vk::ImageLayout::eGeneral, vk::DescriptorType::eStorageImage);
+
+        writer.updateSet(device_, _drawImageDescriptors);
     }
-
-    //allocate a descriptor set for our draw image
-    _drawImageDescriptors = globalDescriptorAllocator.allocate(*device_, _drawImageDescriptorLayout);
-
-    DescriptorWriter writer;
-    writer.write_image(0, *drawImage_.imageView, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-
-    writer.update_set(*device_, _drawImageDescriptors);
 
     /*{
         DescriptorLayoutBuilder builder;
@@ -524,11 +524,11 @@ void Engine::initDescriptors() {
 
     {
         DescriptorLayoutBuilder builder;
-        builder.add_binding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-        _singleImageDescriptorLayout = builder.build(*device_, VK_SHADER_STAGE_FRAGMENT_BIT);
-    }
+        builder.addBinding(0, vk::DescriptorType::eCombinedImageSampler);
+        _singleImageDescriptorLayout = builder.build(device_, vk::ShaderStageFlagBits::eFragment);
 
-    _singleImageDescriptors = globalDescriptorAllocator.allocate(*device_, _singleImageDescriptorLayout);
+        _singleImageDescriptors = globalDescriptorAllocator.allocate(device_, _singleImageDescriptorLayout);
+    }
 }
 
 void Engine::initPipelines() {
@@ -620,23 +620,23 @@ void Engine::initMeshPipeline() {
 
 void Engine::initImGui() {
     // Create descriptor pool for ImGui.
-    VkDescriptorPoolSize pool_sizes[] = {
-        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE },
+    std::array<vk::DescriptorPoolSize, 1> poolSizes = {
+        {{ vk::DescriptorType::eCombinedImageSampler, IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE }}
     };
 
-    VkDescriptorPoolCreateInfo pool_info = {};
-    pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-    pool_info.maxSets = 0;
-    for (VkDescriptorPoolSize& pool_size : pool_sizes) {
-        pool_info.maxSets += pool_size.descriptorCount;
+    vk::DescriptorPoolCreateInfo poolInfo = {
+        .flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
+        .maxSets = 0,
+        .poolSizeCount = static_cast<uint32_t>(poolSizes.size()),
+        .pPoolSizes = poolSizes.data()
+    };
+    for (const auto& poolSize : poolSizes) {
+        poolInfo.maxSets += poolSize.descriptorCount;
     }
-    pool_info.poolSizeCount = (uint32_t)std::size(pool_sizes);
-    pool_info.pPoolSizes = pool_sizes;
 
-    VK_CHECK(vkCreateDescriptorPool(*device_, &pool_info, nullptr, &imguiPool));
+    imguiPool = vk::raii::DescriptorPool(device_, poolInfo);
 
-    // Setup Dear ImGui context
+    // Setup Dear ImGui context.
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
@@ -646,30 +646,29 @@ void Engine::initImGui() {
     ImGui::StyleColorsDark();
 
     ImGui_ImplSDL3_InitForVulkan(window_);
-    ImGui_ImplVulkan_InitInfo init_info = {};
-    init_info.Instance = *instance_;
-    init_info.PhysicalDevice = *physicalDevice_;
-    init_info.Device = *device_;
-    init_info.QueueFamily = graphicsQueueFamily_;
-    init_info.Queue = *graphicsQueue_;
-    init_info.DescriptorPool = imguiPool;
-    init_info.MinImageCount = 2;
-    init_info.ImageCount = 2;
-    init_info.UseDynamicRendering = true;
+    ImGui_ImplVulkan_InitInfo initInfo = {};
+    initInfo.Instance = *instance_;
+    initInfo.PhysicalDevice = *physicalDevice_;
+    initInfo.Device = *device_;
+    initInfo.QueueFamily = graphicsQueueFamily_;
+    initInfo.Queue = *graphicsQueue_;
+    initInfo.DescriptorPool = *imguiPool;
+    initInfo.MinImageCount = 2;
+    initInfo.ImageCount = 2;
+    initInfo.UseDynamicRendering = true;
     // FIXME: should specify vulkanApiVersion in here.
 
-    // Dynamic rendering parameters for imgui to use
-    VkPipelineRenderingCreateInfoKHR pipelineRenderingCreateInfo = {};
-    pipelineRenderingCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
-    pipelineRenderingCreateInfo.colorAttachmentCount = 1;
-    VkFormat colorAttachmentFormat = static_cast<VkFormat>(swapchainImageFormat_);
-    pipelineRenderingCreateInfo.pColorAttachmentFormats = &colorAttachmentFormat;
+    // Dynamic rendering parameters for ImGui to use.
+    vk::PipelineRenderingCreateInfoKHR pipelineRenderingCreateInfo = {
+        .colorAttachmentCount = 1,
+        .pColorAttachmentFormats = &swapchainImageFormat_
+    };
 
-    init_info.PipelineInfoMain = {};
-    init_info.PipelineInfoMain.PipelineRenderingCreateInfo = pipelineRenderingCreateInfo;
-    init_info.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+    initInfo.PipelineInfoMain = {};
+    initInfo.PipelineInfoMain.PipelineRenderingCreateInfo = pipelineRenderingCreateInfo;
+    initInfo.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
 
-    ImGui_ImplVulkan_Init(&init_info);
+    ImGui_ImplVulkan_Init(&initInfo);
 }
 
 void Engine::initDefaultData() {
@@ -734,8 +733,8 @@ void Engine::initDefaultData() {
     testMeshes = loadGltfMeshes(this,"assets/basicmesh.glb").value();
 
     DescriptorWriter writer;
-    writer.write_image(0, *_errorCheckerboardImage.imageView, *_defaultSamplerNearest, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-    writer.update_set(*device_, _singleImageDescriptors);
+    writer.writeImage(0, _errorCheckerboardImage.imageView, _defaultSamplerNearest, vk::ImageLayout::eShaderReadOnlyOptimal, vk::DescriptorType::eCombinedImageSampler);
+    writer.updateSet(device_, _singleImageDescriptors);
 }
 
 void Engine::draw() {

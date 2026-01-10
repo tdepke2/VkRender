@@ -94,8 +94,8 @@ private:
 
     DescriptorAllocator globalDescriptorAllocator;
 
-    VkDescriptorSet _drawImageDescriptors;
-    VkDescriptorSetLayout _drawImageDescriptorLayout;
+    vk::raii::DescriptorSet _drawImageDescriptors = nullptr;
+    vk::raii::DescriptorSetLayout _drawImageDescriptorLayout = nullptr;
 
     vk::raii::Pipeline gradientPipeline_ = nullptr;
     vk::raii::PipelineLayout gradientPipelineLayout_ = nullptr;
@@ -111,7 +111,7 @@ private:
     vk::raii::CommandPool immCommandPool_ = nullptr;
     vk::raii::CommandBuffer immCommandBuffer_ = nullptr;
 
-    VkDescriptorPool imguiPool;
+    vk::raii::DescriptorPool imguiPool = nullptr;
 
     vk::raii::PipelineLayout meshPipelineLayout_ = nullptr;
     vk::raii::Pipeline meshPipeline_ = nullptr;
@@ -129,8 +129,8 @@ private:
     vk::raii::Sampler _defaultSamplerLinear = nullptr;
     vk::raii::Sampler _defaultSamplerNearest = nullptr;
 
-    VkDescriptorSet _singleImageDescriptors;
-    VkDescriptorSetLayout _singleImageDescriptorLayout;
+    vk::raii::DescriptorSet _singleImageDescriptors = nullptr;
+    vk::raii::DescriptorSetLayout _singleImageDescriptorLayout = nullptr;
 
     bool resizeRequested = false;
     bool freeze_rendering = false;

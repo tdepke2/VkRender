@@ -3,61 +3,63 @@
 #include <deque>
 #include <Common.h>
 
-struct DescriptorLayoutBuilder {
-    std::vector<VkDescriptorSetLayoutBinding> bindings;
+class DescriptorLayoutBuilder {
+public:
+    std::vector<vk::DescriptorSetLayoutBinding> bindings;
 
-    void add_binding(uint32_t binding, VkDescriptorType type);
+    void addBinding(uint32_t binding, vk::DescriptorType type);
     void clear();
-    VkDescriptorSetLayout build(VkDevice device, VkShaderStageFlags shaderStages, void* pNext = nullptr, VkDescriptorSetLayoutCreateFlags flags = 0);
+    vk::raii::DescriptorSetLayout build(const vk::raii::Device& device, vk::ShaderStageFlags shaderStages, void* pNext = nullptr, vk::DescriptorSetLayoutCreateFlags flags = {});
 };
 
-struct DescriptorWriter {
-    std::deque<VkDescriptorImageInfo> imageInfos;
-    std::deque<VkDescriptorBufferInfo> bufferInfos;
-    std::vector<VkWriteDescriptorSet> writes;
+class DescriptorWriter {
+public:
+    std::deque<vk::DescriptorImageInfo> imageInfos;
+    std::deque<vk::DescriptorBufferInfo> bufferInfos;
+    std::vector<vk::WriteDescriptorSet> writes;
 
-    void write_image(int binding,VkImageView image,VkSampler sampler , VkImageLayout layout, VkDescriptorType type);
-    void write_buffer(int binding,VkBuffer buffer,size_t size, size_t offset,VkDescriptorType type);
+    void writeImage(uint32_t binding, vk::ImageView image, vk::Sampler sampler, vk::ImageLayout layout, vk::DescriptorType type);
+    void writeBuffer(uint32_t binding, vk::Buffer buffer, size_t size, size_t offset, vk::DescriptorType type);
 
     void clear();
-    void update_set(VkDevice device, VkDescriptorSet set);
+    void updateSet(const vk::raii::Device& device, vk::DescriptorSet set);
 };
 
-struct DescriptorAllocator {
-
-    struct PoolSizeRatio {
-        VkDescriptorType type;
-        float ratio;
-    };
-
-    VkDescriptorPool pool;
-
-    void init_pool(VkDevice device, uint32_t maxSets, std::span<PoolSizeRatio> poolRatios);
-    void clear_descriptors(VkDevice device);
-    void destroy_pool(VkDevice device);
-
-    VkDescriptorSet allocate(VkDevice device, VkDescriptorSetLayout layout);
-};
-
-struct DescriptorAllocatorGrowable {
+class DescriptorAllocator {
 public:
     struct PoolSizeRatio {
-        VkDescriptorType type;
+        vk::DescriptorType type;
         float ratio;
     };
 
-    void init(VkDevice device, uint32_t initialSets, std::span<PoolSizeRatio> poolRatios);
-    void clear_pools(VkDevice device);
-    void destroy_pools(VkDevice device);
+    vk::raii::DescriptorPool pool = nullptr;
 
-    VkDescriptorSet allocate(VkDevice device, VkDescriptorSetLayout layout, void* pNext = nullptr);
+    void initPool(const vk::raii::Device& device, uint32_t maxSets, std::span<PoolSizeRatio> poolRatios);
+    void clearDescriptors();
+    void destroyPool();
+
+    vk::raii::DescriptorSet allocate(const vk::raii::Device& device, vk::DescriptorSetLayout layout);
+};
+
+class DescriptorAllocatorGrowable {
+public:
+    struct PoolSizeRatio {
+        vk::DescriptorType type;
+        float ratio;
+    };
+
+    void init(const vk::raii::Device& device, uint32_t initialSets, std::span<PoolSizeRatio> poolRatios);
+    void clearPools();
+    void destroyPools();
+
+    vk::raii::DescriptorSet allocate(const vk::raii::Device& device, vk::DescriptorSetLayout layout, void* pNext = nullptr);
+
 private:
-    VkDescriptorPool get_pool(VkDevice device);
-    VkDescriptorPool create_pool(VkDevice device, uint32_t setCount, std::span<PoolSizeRatio> poolRatios);
+    vk::raii::DescriptorPool getPool(const vk::raii::Device& device);
+    vk::raii::DescriptorPool createPool(const vk::raii::Device& device, uint32_t setCount, std::span<PoolSizeRatio> poolRatios);
 
-    std::vector<PoolSizeRatio> ratios;
-    std::vector<VkDescriptorPool> fullPools;
-    std::vector<VkDescriptorPool> readyPools;
-    uint32_t setsPerPool;
-
+    std::vector<PoolSizeRatio> ratios_;
+    std::vector<vk::raii::DescriptorPool> fullPools_;
+    std::vector<vk::raii::DescriptorPool> readyPools_;
+    uint32_t setsPerPool_;
 };
