@@ -1,6 +1,8 @@
 # Create the main library from all source files.
 add_library(vkr_src
     Common.h
+    ConsoleVars.cpp
+    ConsoleVars.h
     Descriptors.cpp
     Descriptors.h
     Engine.cpp
@@ -9,6 +11,7 @@ add_library(vkr_src
     Loader.h
     Pipelines.cpp
     Pipelines.h
+    StringHash.h
     VmaUsage.cpp
 )
 

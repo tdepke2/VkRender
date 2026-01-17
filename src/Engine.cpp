@@ -20,6 +20,8 @@
 #include <iterator>
 #include <thread>
 
+#include <ConsoleVars.h>
+
 namespace {
 
 constexpr uint32_t vulkanApiVersion = vk::ApiVersion13;    // FIXME: move to vulkan 1.4? see: https://docs.vulkan.org/tutorial/latest/03_Drawing_a_triangle/00_Setup/01_Instance.html
@@ -172,6 +174,9 @@ void Engine::run() {
             ImGui::InputFloat4("data2", reinterpret_cast<float*>(&gradientConstants_.data2));
             ImGui::InputFloat4("data3", reinterpret_cast<float*>(&gradientConstants_.data3));
             ImGui::InputFloat4("data4", reinterpret_cast<float*>(&gradientConstants_.data4));
+
+            ImGui::SeparatorText("Console Vars");
+            ConsoleVars::drawWithImGui();
         }
         ImGui::End();
 
