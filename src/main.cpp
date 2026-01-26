@@ -2,10 +2,37 @@
 
 #include <spdlog/spdlog.h>
 
+#include <ComponentArray.h>
+#include <Scene.h>
+
 int main() {
     spdlog::set_level(spdlog::level::debug);
     spdlog::info("Using spdlog v{}.{}.{}", SPDLOG_VER_MAJOR, SPDLOG_VER_MINOR, SPDLOG_VER_PATCH);
     spdlog::info("Logging level set to {}.", spdlog::level::to_string_view(spdlog::get_level()));
+
+    ComponentArray<std::string> array(10);
+    array.emplace(5, "this");
+    array.emplace(6, "is");
+    array.emplace(7, "my");
+    auto x = array.emplace(8, "test");
+    spdlog::info("iter is {} -> {} {}", x.first.getEntityIndex(), *x.first, x.second);
+    x = array.emplace(6, "wtf");
+    spdlog::info("iter is {} -> {} {}", x.first.getEntityIndex(), *x.first, x.second);
+
+    array.erase(8);
+
+    std::vector<int> nums;
+
+    for (auto s : array) {
+        spdlog::info("{}", s);
+    }
+
+    Scene s;
+    auto e = s.createEntity();
+
+    s.addComponent<std::string>(e, "3.14");
+
+    return 0;
 
     {
         Engine engine;
