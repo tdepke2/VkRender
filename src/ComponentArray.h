@@ -11,7 +11,8 @@
 
 class IComponentArray {
 public:
-    virtual ~IComponentArray() = default;    // FIXME: does this need to be virtual?
+    virtual ~IComponentArray() = default;
+    virtual void entityDestroyed(uint32_t entityIndex) = 0;
 };
 
 template<typename T>
@@ -60,6 +61,12 @@ public:
             return *keyPtr_;
         }
 
+        // Provided for the SceneView so that it can iterate the ComponentArray
+        // using its own methods.
+        const uint32_t* getEntityIndexPtr() const {
+            return keyPtr_;
+        }
+
         friend bool operator==(const Iterator& a, const Iterator& b) {
             return a.valuePtr_ == b.valuePtr_;
         }
@@ -75,34 +82,44 @@ public:
     ComponentArray(uint32_t capacity) :
         components_(std::make_unique_for_overwrite<T[]>(capacity)),
         entityIndexToComponent_(capacity, std::numeric_limits<uint32_t>::max()),
-        componentToEntityIndex_(),    // FIXME: this is only useful if we loop through just the initialized components in array, instead of whole array.
+        componentToEntityIndex_(),
         capacity_(capacity),
         size_(0) {
     }
     virtual ~ComponentArray() = default;
+    ComponentArray(const ComponentArray& rhs) = delete;
+    ComponentArray& operator=(const ComponentArray& rhs) = delete;
+
+    void entityDestroyed(uint32_t entityIndex) override {
+        remove(entityIndex);
+    }
 
     template<typename... Args>
-    std::pair<Iterator, bool> emplace(uint32_t entityIndex, Args&&... args) {
+    Iterator assign(uint32_t entityIndex, Args&&... args) {
         static_assert(
             std::is_constructible<T, Args...>::value,
             "Cannot construct T from the given arguments."
         );
 
-        if (entityIndexToComponent_[entityIndex] != std::numeric_limits<uint32_t>::max()) {
-            return {{componentToEntityIndex_.data(), components_.get(), entityIndexToComponent_[entityIndex]}, false};
+        auto existingComponentIndex = entityIndexToComponent_[entityIndex];
+        if (existingComponentIndex != std::numeric_limits<uint32_t>::max()) {
+            components_[existingComponentIndex] = {std::forward<Args>(args)...};
+            return {componentToEntityIndex_.data(), components_.get(), existingComponentIndex};
         }
+
         components_[size_] = {std::forward<Args>(args)...};
         componentToEntityIndex_.push_back(entityIndex);
         entityIndexToComponent_[entityIndex] = size_;
         ++size_;
-        return {{componentToEntityIndex_.data(), components_.get(), size_ - 1}, true};
+        return {componentToEntityIndex_.data(), components_.get(), size_ - 1};
     }
 
-    bool erase(uint32_t entityIndex) {
+    bool remove(uint32_t entityIndex) {
         auto componentIndex = entityIndexToComponent_[entityIndex];
         if (componentIndex == std::numeric_limits<uint32_t>::max()) {
             return false;
         }
+
         entityIndexToComponent_[entityIndex] = std::numeric_limits<uint32_t>::max();
         if (componentIndex + 1 < size_) {
             // If we are removing a middle component, move the last component into the empty space.
@@ -110,6 +127,7 @@ public:
             componentToEntityIndex_[componentIndex] = componentToEntityIndex_.back();
             components_[componentIndex] = components_[size_ - 1];
         }
+
         componentToEntityIndex_.pop_back();
         --size_;
         return true;

@@ -4,6 +4,7 @@
 
 #include <ComponentArray.h>
 #include <Scene.h>
+#include <SceneView.h>
 
 int main() {
     spdlog::set_level(spdlog::level::debug);
@@ -11,15 +12,15 @@ int main() {
     spdlog::info("Logging level set to {}.", spdlog::level::to_string_view(spdlog::get_level()));
 
     ComponentArray<std::string> array(10);
-    array.emplace(5, "this");
-    array.emplace(6, "is");
-    array.emplace(7, "my");
-    auto x = array.emplace(8, "test");
-    spdlog::info("iter is {} -> {} {}", x.first.getEntityIndex(), *x.first, x.second);
-    x = array.emplace(6, "wtf");
-    spdlog::info("iter is {} -> {} {}", x.first.getEntityIndex(), *x.first, x.second);
+    array.assign(5, "this");
+    array.assign(6, "is");
+    array.assign(7, "my");
+    auto x = array.assign(8, "test");
+    spdlog::info("iter is {} -> {}", x.getEntityIndex(), *x);
+    x = array.assign(6, "wtf");
+    spdlog::info("iter is {} -> {}", x.getEntityIndex(), *x);
 
-    array.erase(8);
+    array.remove(8);
 
     std::vector<int> nums;
 
@@ -30,7 +31,25 @@ int main() {
     Scene s;
     auto e = s.createEntity();
 
-    s.addComponent<std::string>(e, "3.14");
+    s.assignComponent<int>(e, 99);
+    s.assignComponent<int>(s.createEntity(), 100);
+
+    s.assignComponent<std::string>(e, "3.14");
+
+    spdlog::info("comp is {}", *s.accessComponent<std::string>(e));
+
+    //s.removeComponent<std::string>(e);
+
+    s.assignComponent<double>(e, 1.0);
+    s.assignComponent<double>(s.createEntity(), 2.0);
+    s.assignComponent<double>(s.createEntity(), 3.0);
+
+    
+
+    for (auto e : SceneView<double, int>(s)) {
+        spdlog::info("e = {}", e);
+        spdlog::info("{} {}", *s.accessComponent<double>(e), *s.accessComponent<int>(e));
+    }
 
     return 0;
 

@@ -4,9 +4,12 @@
 
 // https://austinmorlan.com/posts/entity_component_system/
 
+#include <array>
+#include <bitset>
+#include <cassert>
 #include <cstdint>
+#include <limits>
 #include <memory>
-#include <queue>
 #include <vector>
 
 #include <ComponentArray.h>
@@ -19,25 +22,109 @@ using EntityId = uint64_t;
 
 class Scene {
 public:
-    static constexpr size_t MAX_ENTITIES = 10;
+    static constexpr uint32_t MAX_ENTITIES = 40;
+    static constexpr uint32_t MAX_COMPONENT_TYPES = 32;
+
+    Scene() = default;
+    Scene(const Scene& rhs) = delete;
+    Scene& operator=(const Scene& rhs) = delete;
 
     EntityId createEntity() {
         if (!freeEntityIndices_.empty()) {
-            size_t index = freeEntityIndices_.front();
-            freeEntityIndices_.pop();
-            entities_[index] = makeEntityId(index, getEntitySerial(entities_[index]));
-            return entities_[index];
+            auto index = freeEntityIndices_.back();
+            freeEntityIndices_.pop_back();
+            entities_[index].id = makeEntityId(index, getEntitySerial(entities_[index].id));
+            return entities_[index].id;
         }
-        entities_.push_back(makeEntityId(entities_.size(), 0));
-        return entities_.back();
+        entities_.emplace_back(makeEntityId(static_cast<uint32_t>(entities_.size()), 0), 0);
+        return entities_.back().id;
     }
 
     void destroyEntity(EntityId id) {
+        // Ensure we're not using an entity that has been deleted.
+        auto& entityInfo = entities_[getEntityIndex(id)];
+        assert(entityInfo.id == id);
+
+        for (size_t i = 0; i < priv::componentIdCounter; ++i) {
+            if (entityInfo.mask.test(i)) {
+                componentArrays_[i]->entityDestroyed(getEntityIndex(id));
+            }
+        }
+
         // Mark the entity id as invalid, and increment serial.
-        entities_[getEntityIndex(id)] = makeEntityId(0, getEntitySerial(id) + 1);
-        freeEntityIndices_.push(getEntityIndex(id));
+        entityInfo.id = makeEntityId(std::numeric_limits<uint32_t>::max(), getEntitySerial(id) + 1);
+        entityInfo.mask.reset();
+        freeEntityIndices_.push_back(getEntityIndex(id));
+    }
 
+    // The pointer may become invalid when removing any component of the same type (or destroying an entity with the component type).
+    // Returns nullptr if entity not found.
+    template<typename T, typename... Args>
+    T* assignComponent(EntityId id, Args&&... args) {
+        // Ensure we're not using an entity that has been deleted.
+        auto& entityInfo = entities_[getEntityIndex(id)];
+        assert(entityInfo.id == id);
 
+        if (componentArrays_[getComponentId<T>()] == nullptr) {
+            componentArrays_[getComponentId<T>()] = std::make_unique<ComponentArray<T>>(MAX_ENTITIES);
+        }
+
+        entityInfo.mask.set(getComponentId<T>());
+        return &*(getComponentArray<T>()->assign(getEntityIndex(id), std::forward<Args>(args)...));
+    }
+
+    // Does nothing if entity not found or component already removed.
+    template<typename T>
+    void removeComponent(EntityId id) {
+        // Ensure we're not using an entity that has been deleted.
+        auto& entityInfo = entities_[getEntityIndex(id)];
+        assert(entityInfo.id == id);
+
+        if (entityInfo.mask.test(getComponentId<T>())) {
+            entityInfo.mask.reset(getComponentId<T>());
+            getComponentArray<T>()->remove(getEntityIndex(id));
+        }
+    }
+
+    // See assignComponent() notes about pointer validity.
+    // Returns nullptr if entity or component not found.
+    template<typename T>
+    T* accessComponent(EntityId id) {
+        // Ensure we're not using an entity that has been deleted.
+        auto& entityInfo = entities_[getEntityIndex(id)];
+        assert(entityInfo.id == id);
+
+        if (entityInfo.mask.test(getComponentId<T>())) {
+            return &(*getComponentArray<T>())[getEntityIndex(id)];
+        } else {
+            return nullptr;
+        }
+    }
+
+private:
+    struct EntityInfo {
+        EntityId id;
+        std::bitset<MAX_COMPONENT_TYPES> mask;
+    };
+
+    // The entity id is composed of an index (into the vector) and serial. When
+    // an entity is destroyed, the index can be reused to make a new entity but
+    // the serial will increment. This ensures unique ids for entities until we
+    // wrap around the 32-bit integer.
+    static inline EntityId makeEntityId(uint32_t index, uint32_t serial) {
+        return (static_cast<EntityId>(index + 1) << 32) | serial;
+    }
+
+    static inline uint32_t getEntityIndex(EntityId id) {
+        return static_cast<uint32_t>((id >> 32) - 1);
+    }
+
+    static inline uint32_t getEntitySerial(EntityId id) {
+        return static_cast<uint32_t>(id);
+    }
+
+    static inline bool isEntityValid(EntityId id) {
+        return (id >> 32) != 0;
     }
 
     template<typename T>
@@ -46,66 +133,15 @@ public:
         return componentId;
     }
 
-    template<typename T, typename... Args>
-    T* addComponent(EntityId id, Args&&... args) {
-        // Ensure we're not using an entity that has been deleted.
-        if (entities_[getEntityIndex(id)] != id) {
-            return nullptr;
-        }
-
-        unsigned int componentId = getComponentId<T>();
-        if (componentArrays_.size() <= componentId) {
-            componentArrays_.resize(componentId + 1);
-        }
-        if (componentArrays_[componentId] == nullptr) {
-            componentArrays_[componentId] = std::make_unique<ComponentArray<T>>(MAX_ENTITIES);
-        }
-
-
-
-        static_cast<ComponentArray<T>*>(componentArrays_[componentId].get())->emplace(getEntityIndex(id), std::forward<Args>(args)...);
-    }
-
     template<typename T>
-    void removeComponent(EntityId id) {
-        // Ensure we're not using an entity that has been deleted.
-        if (entities_[getEntityIndex(id)] != id) {
-            return;
-        }
-
-        unsigned int componentId = getComponentId<T>();
-
-
+    inline ComponentArray<T>* getComponentArray() {
+        return static_cast<ComponentArray<T>*>(componentArrays_[getComponentId<T>()].get());
     }
 
-    template<typename T>
-    T* getComponent(EntityId id) {
-        // Ensure we're not using an entity that has been deleted.
-        if (entities_[getEntityIndex(id)] != id) {
-            return nullptr;
-        }
+    std::vector<EntityInfo> entities_;
+    std::vector<uint32_t> freeEntityIndices_;
+    std::array<std::unique_ptr<IComponentArray>, MAX_COMPONENT_TYPES> componentArrays_;
 
-
-    }
-
-private:
-    static inline EntityId makeEntityId(uint32_t index, uint32_t serial) {
-        return (static_cast<EntityId>(index + 1) << 32) | serial;
-    }
-
-    static inline uint32_t getEntityIndex(EntityId id) {
-        return (id >> 32) - 1;
-    }
-
-    static inline uint32_t getEntitySerial(EntityId id) {
-        return id;
-    }
-
-    static inline bool isEntityValid(EntityId id) {
-        return (id >> 32) != 0;
-    }
-
-    std::vector<EntityId> entities_;
-    std::queue<uint32_t> freeEntityIndices_;
-    std::vector<std::unique_ptr<IComponentArray>> componentArrays_;
+    template<typename... ComponentTypes>
+    friend class SceneView;
 };

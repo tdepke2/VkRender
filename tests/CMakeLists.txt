@@ -13,6 +13,7 @@ include(Catch)
 
 add_executable(vkr_src_test
     ComponentArray.test.cpp
+    Scene.test.cpp
 )
 target_link_libraries(vkr_src_test PRIVATE
     vkr_src
