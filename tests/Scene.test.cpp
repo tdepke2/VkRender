@@ -7,6 +7,8 @@
 #include <iostream>
 #include <random>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 
 // Wrapper types intended for the initial test only.
 // Note that component types must be default constructible.
@@ -30,7 +32,7 @@ struct MyString {
 };
 
 TEST_CASE("Test initial", "[Scene]") {
-    Scene s;
+    auto& s = Scene::instance();
 
     // Catch2 does not specify the order these test cases will run, and in practice it seems random.
     // We cannot reset the value of `priv::componentIdCounter` because other component ids may have been decided already (and bound to static vars).
@@ -77,10 +79,12 @@ TEST_CASE("Test initial", "[Scene]") {
     auto sceneView5 = SceneView<MyDouble>(s);
     auto list2 = {e3, e2};
     REQUIRE(std::equal(sceneView5.begin(), sceneView5.end(), list2.begin(), list2.end()));
+
+    s.destroyAllEntities();
 }
 
 TEST_CASE("Test entity add/remove", "[Scene]") {
-    Scene s;
+    auto& s = Scene::instance();
     std::unordered_set<EntityId> seenEntities;
 
     auto e1 = s.createEntity();
@@ -140,10 +144,79 @@ TEST_CASE("Test entity add/remove", "[Scene]") {
         auto list = {e6, e7, e8};
         REQUIRE(std::equal(sceneView.begin(), sceneView.end(), list.begin(), list.end()));
     }
+
+    s.destroyAllEntities();
+}
+
+template<typename T>
+void checkSceneView(Scene& scene, SceneView<T> sceneView, const std::vector<std::pair<EntityId, T>>& items) {
+    auto first1 = sceneView.begin();
+    auto last1 = sceneView.end();
+    auto first2 = items.begin();
+    auto last2 = items.end();
+
+    for (; first1 != last1 && first2 != last2; ++first1, ++first2) {
+        REQUIRE(*first1 == first2->first);
+        REQUIRE(*scene.accessComponent<T>(*first1) == first2->second);
+    }
+
+    REQUIRE(first1 == last1);
+    REQUIRE(first2 == last2);
 }
 
 TEST_CASE("Test component add/remove", "[Scene]") {
+    auto& s = Scene::instance();
+    std::unordered_set<EntityId> seenEntities;
 
+    auto e1 = s.createEntity();
+    REQUIRE(seenEntities.insert(e1).second);
+    auto e2 = s.createEntity();
+    REQUIRE(seenEntities.insert(e2).second);
+    auto e3 = s.createEntity();
+    REQUIRE(seenEntities.insert(e3).second);
+
+    // Components are iterated in order of creation.
+    s.assignComponent<int>(e3, 10);
+    s.assignComponent<int>(e2, 20);
+    s.assignComponent<int>(e1, 30);
+    checkSceneView(s, SceneView<int>(s), {
+        {e3, 10},
+        {e2, 20},
+        {e1, 30},
+    });
+
+    s.removeComponent<int>(e2);
+    checkSceneView(s, SceneView<int>(s), {
+        {e3, 10},
+        {e1, 30},
+    });
+
+    s.assignComponent<int>(e2, 40);
+    checkSceneView(s, SceneView<int>(s), {
+        {e3, 10},
+        {e1, 30},
+        {e2, 40},
+    });
+
+    s.removeComponent<int>(e2);
+    checkSceneView(s, SceneView<int>(s), {
+        {e3, 10},
+        {e1, 30},
+    });
+
+    s.assignComponent<int>(e2, 50);
+    checkSceneView(s, SceneView<int>(s), {
+        {e3, 10},
+        {e1, 30},
+        {e2, 50},
+    });
+
+    s.removeComponent<int>(e3);
+    s.removeComponent<int>(e2);
+    s.removeComponent<int>(e1);
+    checkSceneView(s, SceneView<int>(s), {});
+
+    s.destroyAllEntities();
 }
 
 struct Transform {
@@ -157,7 +230,7 @@ struct CharacterData {
 };
 
 TEST_CASE("Test ECS example", "[Scene]") {
-    Scene s;
+    auto& s = Scene::instance();
     std::unordered_set<EntityId> seenEntities;
 
     std::vector<EntityId> rigidBodies, particles, npcs;
@@ -353,11 +426,6 @@ TEST_CASE("Test ECS example", "[Scene]") {
             REQUIRE(*s.accessComponent<int>(npcs[i]) == 123);
         }
     }
-}
 
-// to test:
-// entity id is unique: done
-// entity add/remove: done
-// component add/remove (removed component can change order)
-// pointer/iterator validity is what I expect: meh
-// lots of entities and components: wip
+    s.destroyAllEntities();
+}

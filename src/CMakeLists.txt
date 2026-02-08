@@ -6,6 +6,7 @@ add_library(vkr_src
     ConsoleVars.h
     Descriptors.cpp
     Descriptors.h
+    DisableWarning.h
     Engine.cpp
     Engine.h
     Loader.cpp
@@ -14,7 +15,10 @@ add_library(vkr_src
     Pipelines.h
     Scene.cpp
     Scene.h
+    SceneView.h
     StringHash.h
+    Transform.cpp
+    Transform.h
     VmaUsage.cpp
 )
 

@@ -1,4 +1,5 @@
 #include <ComponentArray.h>
+#include <DisableWarning.h>
 
 #include <algorithm>
 #include <catch2/catch_get_random_seed.hpp>
@@ -12,14 +13,13 @@
 #include <vector>
 
 TEST_CASE("Test ctor", "[ComponentArray]") {
-    ComponentArray<char> array1(10);
+    ComponentArray<char> array1;
     REQUIRE(array1.size() == 0);
-    REQUIRE(array1.capacity() == 10);
     REQUIRE(array1.begin() == array1.end());
 }
 
 TEST_CASE("Test access/modification", "[ComponentArray]") {
-    ComponentArray<char> array1(10);
+    ComponentArray<char> array1;
     REQUIRE_FALSE(array1.remove(3));
     REQUIRE_FALSE(array1.hasEntity(4));
     REQUIRE_THROWS_AS(array1.at(0), std::out_of_range);
@@ -30,7 +30,6 @@ TEST_CASE("Test access/modification", "[ComponentArray]") {
     REQUIRE(array1[3] == 'a');
     REQUIRE(array1.hasEntity(3));
     REQUIRE(array1.size() == 1);
-    REQUIRE(array1.capacity() == 10);
     REQUIRE(array1.begin() != array1.end());
     REQUIRE(*array1.assign(3, 'b') == 'b');
 
@@ -38,7 +37,6 @@ TEST_CASE("Test access/modification", "[ComponentArray]") {
     REQUIRE_THROWS_AS(array1.at(3), std::out_of_range);
     REQUIRE_FALSE(array1.hasEntity(3));
     REQUIRE(array1.size() == 0);
-    REQUIRE(array1.capacity() == 10);
     REQUIRE(array1.begin() == array1.end());
     REQUIRE_FALSE(array1.remove(3));
 
@@ -54,7 +52,6 @@ TEST_CASE("Test access/modification", "[ComponentArray]") {
     REQUIRE(array1.hasEntity(3));
     REQUIRE_FALSE(array1.hasEntity(4));
     REQUIRE(array1.size() == 3);
-    REQUIRE(array1.capacity() == 10);
     REQUIRE(array1.begin() != array1.end());
 
     REQUIRE(array1.remove(2));
@@ -67,8 +64,92 @@ TEST_CASE("Test access/modification", "[ComponentArray]") {
     REQUIRE(array1.hasEntity(3));
     REQUIRE_FALSE(array1.hasEntity(4));
     REQUIRE(array1.size() == 2);
-    REQUIRE(array1.capacity() == 10);
     REQUIRE(array1.begin() != array1.end());
+}
+
+// Track some data and a counter for the number of "live" data elements.
+struct TrackedData {
+    TrackedData() {
+        std::cout << "TrackedData::TrackedData() default ctor\n";
+    }
+    TrackedData(int val, size_t& counter) :
+        val(val),
+        counter(&counter) {
+        ++(*this->counter);
+        std::cout << "TrackedData::TrackedData() value ctor, val = " << val << ", counter = " << *this->counter << "\n";
+    }
+    ~TrackedData() {
+        if (counter != nullptr) {
+            --*counter;
+        }
+        std::cout << "TrackedData::~TrackedData() dtor, val = " << val << ", counter = " << (counter == nullptr ? "nullptr" : std::to_string(*counter)) << "\n";
+    }
+    TrackedData(const TrackedData& rhs) = delete;
+    TrackedData(TrackedData&& rhs) noexcept :
+        val(std::move(rhs.val)),
+        counter(std::move(rhs.counter)) {
+        rhs.counter = nullptr;
+        std::cout << "TrackedData::TrackedData() move ctor, val = " << val << "\n";
+    }
+    TrackedData& operator=(const TrackedData& rhs) = delete;
+    TrackedData& operator=(TrackedData&& rhs) noexcept {
+        if (counter != nullptr) {
+            --*counter;
+        }
+        val = std::move(rhs.val);
+        counter = std::move(rhs.counter);
+        rhs.counter = nullptr;
+        std::cout << "TrackedData::operator=() move assign, val = " << val << ", counter = " << (counter == nullptr ? "nullptr" : std::to_string(*counter)) << "\n";
+        return *this;
+    }
+
+    int val = 0;
+    size_t* counter = nullptr;
+};
+
+TEST_CASE("Test move/destruction of components", "[ComponentArray]") {
+    size_t counter = 0;
+
+    // Removing a component destroys it.
+    {
+        ComponentArray<TrackedData> array1;
+
+        REQUIRE(array1.assign(9, 123, counter)->val == 123);
+        REQUIRE(counter == 1);
+        REQUIRE(array1.assign(9, 456, counter)->val == 456);
+        REQUIRE(counter == 1);
+        REQUIRE(array1.remove(9));
+        REQUIRE(counter == 0);
+    }
+    REQUIRE(counter == 0);
+
+    // Destructor destroys all components.
+    {
+        ComponentArray<TrackedData> array1;
+
+        REQUIRE(array1.assign(9, 123, counter)->val == 123);
+        REQUIRE(counter == 1);
+        REQUIRE(array1.assign(8, 456, counter)->val == 456);
+        REQUIRE(counter == 2);
+    }
+    REQUIRE(counter == 0);
+
+    // Replacing a component with another destroys the old one.
+    {
+        ComponentArray<TrackedData> array1;
+
+        REQUIRE(array1.assign(3, 12, counter)->val == 12);
+        REQUIRE(counter == 1);
+        REQUIRE(array1.assign(5, 34, counter)->val == 34);
+        REQUIRE(counter == 2);
+        REQUIRE(array1.remove(3));
+        REQUIRE(counter == 1);
+        REQUIRE(array1.assign(5, 56, counter)->val == 56);
+        REQUIRE(counter == 1);
+        REQUIRE(array1.assign(3, 78, counter)->val == 78);
+        REQUIRE(counter == 2);
+    }
+    REQUIRE(counter == 0);
 }
 
 TEST_CASE("Test iterators", "[ComponentArray]") {
@@ -99,7 +180,7 @@ TEST_CASE("Test iterators", "[ComponentArray]") {
         return true;
     };
 
-    ComponentArray<std::string> arr1(10);
+    ComponentArray<std::string> arr1;
     REQUIRE(checkEquals(arr1, {}));
     arr1.assign(2, "second");
     REQUIRE(checkEquals(arr1, {
@@ -176,7 +257,7 @@ TEST_CASE("Test iterators", "[ComponentArray]") {
     std::mt19937 mersenneRand(Catch::getSeed());
     std::uniform_real_distribution<> dist1(0.0, 1.0);
 
-    ComponentArray<double> nums(100);
+    ComponentArray<double> nums;
     std::vector<double> numsVec;
 
     for (uint32_t i = 0; i < 100; ++i) {
@@ -189,7 +270,6 @@ TEST_CASE("Test iterators", "[ComponentArray]") {
     }
 
     REQUIRE(nums.size() == 100);
-    REQUIRE(nums.capacity() == 100);
     REQUIRE(std::equal(nums.begin(), nums.end(), numsVec.begin()));
 
     numsVec.clear();
@@ -199,6 +279,48 @@ TEST_CASE("Test iterators", "[ComponentArray]") {
     }
 
     REQUIRE(nums.size() == 0);
-    REQUIRE(nums.capacity() == 100);
     REQUIRE(std::equal(nums.begin(), nums.end(), numsVec.begin()));
+}
+
+struct DefaultAlign {
+    int x;
+};
+
+DISABLE_WARNING_PUSH
+DISABLE_WARNING_PADDED_DUE_TO_ALIGNMENT
+struct alignas(256) CustomAlign {
+    // With this memory alignment, the least significant byte of the address will be zero.
+    int x;
+};
+DISABLE_WARNING_POP
+
+TEST_CASE("Test alignment", "[ComponentArray]") {
+    // We need to ensure that the component data respects memory alignment since
+    // the internal implementation uses placement new to allocate objects into a
+    // byte array. If memory alignment is not being followed, it could cause
+    // inefficient access or segmentation faults on some architectures.
+    {
+        ComponentArray<DefaultAlign> arr1;
+
+        arr1.assign(0, DefaultAlign{ .x = 7 });
+        arr1.assign(3, DefaultAlign{ .x = 8 });
+        std::cout << "DefaultAlign address is: " << &arr1.at(0) << "\n";
+        REQUIRE(reinterpret_cast<std::uintptr_t>(&arr1.at(0)) % alignof(DefaultAlign) == 0);
+        REQUIRE(reinterpret_cast<std::uintptr_t>(&arr1.at(3)) % alignof(DefaultAlign) == 0);
+        REQUIRE(reinterpret_cast<std::uintptr_t>(&arr1.at(3)) == reinterpret_cast<std::uintptr_t>(&arr1.at(0)) + sizeof(DefaultAlign));
+    }
+
+    {
+        DISABLE_WARNING_PUSH
+        DISABLE_WARNING_PADDED_DUE_TO_ALIGNMENT
+        ComponentArray<CustomAlign> arr1;
+        DISABLE_WARNING_POP
+
+        arr1.assign(0, CustomAlign{ .x = 9 });
+        arr1.assign(3, CustomAlign{ .x = 10 });
+        std::cout << "CustomAlign address is: " << &arr1.at(0) << "\n";
+        REQUIRE(reinterpret_cast<std::uintptr_t>(&arr1.at(0)) % alignof(CustomAlign) == 0);
+        REQUIRE(reinterpret_cast<std::uintptr_t>(&arr1.at(3)) % alignof(CustomAlign) == 0);
+        REQUIRE(reinterpret_cast<std::uintptr_t>(&arr1.at(3)) == reinterpret_cast<std::uintptr_t>(&arr1.at(0)) + sizeof(CustomAlign));
+    }
 }

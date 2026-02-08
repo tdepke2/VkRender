@@ -13,8 +13,15 @@
 
 
 
-// A SceneView can be constructed with the component types that all entities should have, or no component types (which will iterate all entities).
-// The SceneView and its iterators are valid until the Scene is modified in some way (adding/removing components or entities). Think of it like the std::vector iterator rules.
+/**
+ * Provides iteration of the entities in a scene.
+ * 
+ * A `SceneView` can be constructed with the component types that all entities
+ * must have, or no component types (which will iterate all entities). This
+ * object and its iterators are valid until the `Scene` is modified in some way
+ * (adding/removing components or entities). Think of it like the `std::vector`
+ * iterator rules.
+ */
 template<typename... ComponentTypes>
 class SceneView {
 public:
@@ -81,9 +88,9 @@ public:
         }
 
     private:
-        Scene* scene_;
+        Scene* scene_ = nullptr;
         std::bitset<Scene::MAX_COMPONENT_TYPES> componentMask_;
-        bool allEntities_;
+        bool allEntities_ = false;
         union {
             // These pointers will be the same size in memory, so we don't need to pick the active one when comparing pointers with another iterator.
             const Scene::EntityInfo* entitiesPtr_;
@@ -175,9 +182,9 @@ private:
         }
     }
 
-    Scene* scene_;
+    Scene* scene_ = nullptr;
     std::bitset<Scene::MAX_COMPONENT_TYPES> componentMask_;
-    bool allEntities_;
-    const uint32_t* entityIndexBegin_;
-    const uint32_t* entityIndexEnd_;
+    bool allEntities_ = false;
+    const uint32_t* entityIndexBegin_ = nullptr;
+    const uint32_t* entityIndexEnd_ = nullptr;
 };

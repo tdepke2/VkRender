@@ -1,18 +1,13 @@
 #pragma once
 
-// https://www.david-colson.com/2020/02/09/making-a-simple-ecs.html
-
-// https://austinmorlan.com/posts/entity_component_system/
+#include <ComponentArray.h>
 
 #include <array>
 #include <bitset>
 #include <cassert>
 #include <cstdint>
-#include <limits>
 #include <memory>
 #include <vector>
-
-#include <ComponentArray.h>
 
 namespace priv {
     extern unsigned int componentIdCounter;
@@ -20,86 +15,53 @@ namespace priv {
 
 using EntityId = uint64_t;
 
+/**
+ * Storage for entities and components (entity component system).
+ * 
+ * An entity is just a simple identifier. Different types of components can be
+ * assigned to the entity depending on what kind of data it needs. The
+ * components are stored in contiguous arrays so that iterating them is very
+ * fast. See `ComponentArray` for more details. Also see `SceneView` for
+ * iterating entities within the scene.
+ * 
+ * Based on the following implementations:
+ * https://www.david-colson.com/2020/02/09/making-a-simple-ecs.html
+ * https://austinmorlan.com/posts/entity_component_system/
+ */
 class Scene {
+private:
+    struct Private {
+        explicit Private() = default;
+    };
+
 public:
-    static constexpr uint32_t MAX_ENTITIES = 40;
+    static constexpr uint32_t MAX_ENTITIES = IComponentArray::MAX_SIZE;    // FIXME: throw exception if we create and entity and this is exceeded?
     static constexpr uint32_t MAX_COMPONENT_TYPES = 32;
 
-    Scene() = default;
+    static Scene& instance();
+    Scene(Private);
+    ~Scene() = default;
     Scene(const Scene& rhs) = delete;
+    Scene(Scene&& rhs) noexcept = delete;
     Scene& operator=(const Scene& rhs) = delete;
+    Scene& operator=(Scene&& rhs) noexcept = delete;
 
-    EntityId createEntity() {
-        if (!freeEntityIndices_.empty()) {
-            auto index = freeEntityIndices_.back();
-            freeEntityIndices_.pop_back();
-            entities_[index].id = makeEntityId(index, getEntitySerial(entities_[index].id));
-            return entities_[index].id;
-        }
-        entities_.emplace_back(makeEntityId(static_cast<uint32_t>(entities_.size()), 0), 0);
-        return entities_.back().id;
-    }
-
-    void destroyEntity(EntityId id) {
-        // Ensure we're not using an entity that has been deleted.
-        auto& entityInfo = entities_[getEntityIndex(id)];
-        assert(entityInfo.id == id);
-
-        for (size_t i = 0; i < priv::componentIdCounter; ++i) {
-            if (entityInfo.mask.test(i)) {
-                componentArrays_[i]->entityDestroyed(getEntityIndex(id));
-            }
-        }
-
-        // Mark the entity id as invalid, and increment serial.
-        entityInfo.id = makeEntityId(std::numeric_limits<uint32_t>::max(), getEntitySerial(id) + 1);
-        entityInfo.mask.reset();
-        freeEntityIndices_.push_back(getEntityIndex(id));
-    }
+    EntityId createEntity();
+    void destroyEntity(EntityId id);
+    void destroyAllEntities();
 
     // The pointer may become invalid when removing any component of the same type (or destroying an entity with the component type).
-    // Returns nullptr if entity not found.
     template<typename T, typename... Args>
-    T* assignComponent(EntityId id, Args&&... args) {
-        // Ensure we're not using an entity that has been deleted.
-        auto& entityInfo = entities_[getEntityIndex(id)];
-        assert(entityInfo.id == id);
+    T* assignComponent(EntityId id, Args&&... args);
 
-        if (componentArrays_[getComponentId<T>()] == nullptr) {
-            componentArrays_[getComponentId<T>()] = std::make_unique<ComponentArray<T>>(MAX_ENTITIES);
-        }
-
-        entityInfo.mask.set(getComponentId<T>());
-        return &*(getComponentArray<T>()->assign(getEntityIndex(id), std::forward<Args>(args)...));
-    }
-
-    // Does nothing if entity not found or component already removed.
+    // Does nothing if component already removed.
     template<typename T>
-    void removeComponent(EntityId id) {
-        // Ensure we're not using an entity that has been deleted.
-        auto& entityInfo = entities_[getEntityIndex(id)];
-        assert(entityInfo.id == id);
-
-        if (entityInfo.mask.test(getComponentId<T>())) {
-            entityInfo.mask.reset(getComponentId<T>());
-            getComponentArray<T>()->remove(getEntityIndex(id));
-        }
-    }
+    void removeComponent(EntityId id);
 
     // See assignComponent() notes about pointer validity.
-    // Returns nullptr if entity or component not found.
+    // Returns nullptr if component not found.
     template<typename T>
-    T* accessComponent(EntityId id) {
-        // Ensure we're not using an entity that has been deleted.
-        auto& entityInfo = entities_[getEntityIndex(id)];
-        assert(entityInfo.id == id);
-
-        if (entityInfo.mask.test(getComponentId<T>())) {
-            return &(*getComponentArray<T>())[getEntityIndex(id)];
-        } else {
-            return nullptr;
-        }
-    }
+    T* accessComponent(EntityId id);
 
 private:
     struct EntityInfo {
@@ -145,3 +107,42 @@ private:
     template<typename... ComponentTypes>
     friend class SceneView;
 };
+
+template<typename T, typename... Args>
+T* Scene::assignComponent(EntityId id, Args&&... args) {
+    // Ensure we're not using an entity that has been deleted.
+    auto& entityInfo = entities_[getEntityIndex(id)];
+    assert(entityInfo.id == id);
+
+    if (componentArrays_[getComponentId<T>()] == nullptr) {
+        componentArrays_[getComponentId<T>()] = std::make_unique<ComponentArray<T>>();
+    }
+
+    entityInfo.mask.set(getComponentId<T>());
+    return &*(getComponentArray<T>()->assign(getEntityIndex(id), std::forward<Args>(args)...));
+}
+
+template<typename T>
+void Scene::removeComponent(EntityId id) {
+    // Ensure we're not using an entity that has been deleted.
+    auto& entityInfo = entities_[getEntityIndex(id)];
+    assert(entityInfo.id == id);
+
+    if (entityInfo.mask.test(getComponentId<T>())) {
+        entityInfo.mask.reset(getComponentId<T>());
+        getComponentArray<T>()->remove(getEntityIndex(id));
+    }
+}
+
+template<typename T>
+T* Scene::accessComponent(EntityId id) {
+    // Ensure we're not using an entity that has been deleted.
+    auto& entityInfo = entities_[getEntityIndex(id)];
+    assert(entityInfo.id == id);
+
+    if (entityInfo.mask.test(getComponentId<T>())) {
+        return &(*getComponentArray<T>())[getEntityIndex(id)];
+    } else {
+        return nullptr;
+    }
+}
