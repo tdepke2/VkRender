@@ -1,0 +1,23 @@
+stuff to fix:
+
+commas like: {
+    a,
+    b,
+    c,  <----
+}
+
+obviously all the non vk:: types
+leading underscores in names.
+underscores in middle of names.
+curly brace on beginning of line.
+ugly c-style casts
+constructor using {} without equals sign
+++/-- as postfix instead of prefix
+any &(*blah) can just be &*blah
+struct initializers like vk::Offset3D(blah) should be using braces since it's not a constructor call
+always use inline member initialization? there is a cpp guidelines point that has more info. example:
+    class X {
+    private:
+        int val = 3;  <----
+        std::vector<double> nums = {};
+    };
