@@ -20,7 +20,12 @@
 #include <iterator>
 #include <thread>
 
+#include <components/Renderable.h>
+#include <components/Transform.h>
 #include <ConsoleVars.h>
+#include <Loader.h>
+#include <Scene.h>
+#include <SceneView.h>
 
 #include <spdlog/fmt/fmt.h>
 
@@ -172,135 +177,120 @@ void Engine::init() {
     initDefaultData();
 }
 
-void Engine::run() {
-    SDL_Event event;
-    bool closeWindow = false;
+void Engine::processEvent(const SDL_Event* event) {
+    ImGui_ImplSDL3_ProcessEvent(event);
 
-    while (!closeWindow) {
-        // Handle events from the queue.
-        while (SDL_PollEvent(&event)) {
-            ImGui_ImplSDL3_ProcessEvent(&event);
-
-            if (event.type == SDL_EVENT_QUIT) {
-                closeWindow = true;
-            }
-
-            if (event.type == SDL_EVENT_WINDOW_MINIMIZED) {
-                freeze_rendering = true;
-            } else if (event.type == SDL_EVENT_WINDOW_RESTORED) {
-                freeze_rendering = false;
-            }
-        }
-
-        if (freeze_rendering) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            continue;
-        }
-
-        if (resizeRequested && !resizeSwapchain()) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            continue;
-        }
-
-        // ImGui new frame.
-        ImGui_ImplVulkan_NewFrame();
-        ImGui_ImplSDL3_NewFrame();
-        ImGui::NewFrame();
-
-        // Some ImGui UI to test.
-        //ImGui::ShowDemoWindow();
-
-        constexpr std::array<std::string_view, 3> aspectRatioText = {
-            "Normal 4:3",
-            "Widescreen 16:9",
-            "Widescreen 16:10",
-        };
-        // FIXME: this should go in some separate file to contains the GUI stuff, and maybe not use all these static vars.
-        static std::vector<std::string> resolutionText4To3;
-        if (resolutionText4To3.empty()) {
-            for (size_t i = 0; i < displayResolutions4To3.size(); ++i) {
-                resolutionText4To3.push_back(fmt::format("{}x{} {}", displayResolutions4To3[i].width, displayResolutions4To3[i].height, displayResolutions4To3[i].name));
-            }
-        }
-        static std::vector<std::string> resolutionText16To9;
-        if (resolutionText16To9.empty()) {
-            for (size_t i = 0; i < displayResolutions16To9.size(); ++i) {
-                resolutionText16To9.push_back(fmt::format("{}x{} {}", displayResolutions16To9[i].width, displayResolutions16To9[i].height, displayResolutions16To9[i].name));
-            }
-        }
-        static std::vector<std::string> resolutionText16To10;
-        if (resolutionText16To10.empty()) {
-            for (size_t i = 0; i < displayResolutions16To10.size(); ++i) {
-                resolutionText16To10.push_back(fmt::format("{}x{} {}", displayResolutions16To10[i].width, displayResolutions16To10[i].height, displayResolutions16To10[i].name));
-            }
-        }
-
-        if (ImGui::Begin("background")) {
-            static size_t currentAspectRatio = 0;
-            static std::vector<std::string>* currentResolutionType = &resolutionText4To3;
-            static size_t currentResolution = 0;
-
-            if (ImGui::BeginCombo("Aspect Ratio", aspectRatioText[currentAspectRatio].data())) {
-                for (size_t i = 0; i < aspectRatioText.size(); ++i) {
-                    const bool isSelected = (i == currentAspectRatio);
-                    if (ImGui::Selectable(aspectRatioText[i].data(), isSelected) && !isSelected) {
-                        currentAspectRatio = i;
-                        if (i == 0) {
-                            currentResolutionType = &resolutionText4To3;
-                        } else if (i == 1) {
-                            currentResolutionType = &resolutionText16To9;
-                        } else if (i == 2) {
-                            currentResolutionType = &resolutionText16To10;
-                        }
-                        currentResolution = 0;
-                        spdlog::debug("resolution changed to {}", (*currentResolutionType)[currentResolution]);
-                    }
-                    if (isSelected) {
-                        ImGui::SetItemDefaultFocus();
-                    }
-                }
-                ImGui::EndCombo();
-            }
-            if (ImGui::BeginCombo("Resolution", (*currentResolutionType)[currentResolution].data())) {
-                for (size_t i = 0; i < currentResolutionType->size(); ++i) {
-                    const bool isSelected = (i == currentResolution);
-                    if (ImGui::Selectable((*currentResolutionType)[i].data(), isSelected) && !isSelected) {
-                        currentResolution = i;
-                        spdlog::debug("resolution changed to {}", (*currentResolutionType)[currentResolution]);
-                    }
-                    if (isSelected) {
-                        ImGui::SetItemDefaultFocus();
-                    }
-                }
-                ImGui::EndCombo();
-            }
-
-            ImGui::SliderFloat("Render Scale", &renderScale, 0.3f, 1.0f);
-            ImGui::InputFloat4("data1", reinterpret_cast<float*>(&gradientConstants_.data1));
-            ImGui::InputFloat4("data2", reinterpret_cast<float*>(&gradientConstants_.data2));
-            ImGui::InputFloat4("data3", reinterpret_cast<float*>(&gradientConstants_.data3));
-            ImGui::InputFloat4("data4", reinterpret_cast<float*>(&gradientConstants_.data4));
-
-            ImGui::SeparatorText("Console Vars");
-            ConsoleVars::drawWithImGui();
-        }
-        ImGui::End();
-
-        // Tell ImGui to calculate internal draw structures.
-        ImGui::Render();
-
-        draw();
+    if (event->type == SDL_EVENT_WINDOW_MINIMIZED) {
+        freeze_rendering = true;
+    } else if (event->type == SDL_EVENT_WINDOW_RESTORED) {
+        freeze_rendering = false;
     }
+}
+
+void Engine::render() {
+    if (freeze_rendering) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        return;
+    }
+
+    if (resizeRequested && !resizeSwapchain()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        return;
+    }
+
+    // ImGui new frame.
+    ImGui_ImplVulkan_NewFrame();
+    ImGui_ImplSDL3_NewFrame();
+    ImGui::NewFrame();
+
+    // Some ImGui UI to test.
+    //ImGui::ShowDemoWindow();
+
+    constexpr std::array<std::string_view, 3> aspectRatioText = {
+        "Normal 4:3",
+        "Widescreen 16:9",
+        "Widescreen 16:10",
+    };
+    // FIXME: this should go in some separate file to contains the GUI stuff, and maybe not use all these static vars.
+    static std::vector<std::string> resolutionText4To3;
+    if (resolutionText4To3.empty()) {
+        for (size_t i = 0; i < displayResolutions4To3.size(); ++i) {
+            resolutionText4To3.push_back(fmt::format("{}x{} {}", displayResolutions4To3[i].width, displayResolutions4To3[i].height, displayResolutions4To3[i].name));
+        }
+    }
+    static std::vector<std::string> resolutionText16To9;
+    if (resolutionText16To9.empty()) {
+        for (size_t i = 0; i < displayResolutions16To9.size(); ++i) {
+            resolutionText16To9.push_back(fmt::format("{}x{} {}", displayResolutions16To9[i].width, displayResolutions16To9[i].height, displayResolutions16To9[i].name));
+        }
+    }
+    static std::vector<std::string> resolutionText16To10;
+    if (resolutionText16To10.empty()) {
+        for (size_t i = 0; i < displayResolutions16To10.size(); ++i) {
+            resolutionText16To10.push_back(fmt::format("{}x{} {}", displayResolutions16To10[i].width, displayResolutions16To10[i].height, displayResolutions16To10[i].name));
+        }
+    }
+
+    if (ImGui::Begin("background")) {
+        static size_t currentAspectRatio = 0;
+        static std::vector<std::string>* currentResolutionType = &resolutionText4To3;
+        static size_t currentResolution = 0;
+
+        if (ImGui::BeginCombo("Aspect Ratio", aspectRatioText[currentAspectRatio].data())) {
+            for (size_t i = 0; i < aspectRatioText.size(); ++i) {
+                const bool isSelected = (i == currentAspectRatio);
+                if (ImGui::Selectable(aspectRatioText[i].data(), isSelected) && !isSelected) {
+                    currentAspectRatio = i;
+                    if (i == 0) {
+                        currentResolutionType = &resolutionText4To3;
+                    } else if (i == 1) {
+                        currentResolutionType = &resolutionText16To9;
+                    } else if (i == 2) {
+                        currentResolutionType = &resolutionText16To10;
+                    }
+                    currentResolution = 0;
+                    spdlog::debug("resolution changed to {}", (*currentResolutionType)[currentResolution]);
+                }
+                if (isSelected) {
+                    ImGui::SetItemDefaultFocus();
+                }
+            }
+            ImGui::EndCombo();
+        }
+        if (ImGui::BeginCombo("Resolution", (*currentResolutionType)[currentResolution].data())) {
+            for (size_t i = 0; i < currentResolutionType->size(); ++i) {
+                const bool isSelected = (i == currentResolution);
+                if (ImGui::Selectable((*currentResolutionType)[i].data(), isSelected) && !isSelected) {
+                    currentResolution = i;
+                    spdlog::debug("resolution changed to {}", (*currentResolutionType)[currentResolution]);
+                }
+                if (isSelected) {
+                    ImGui::SetItemDefaultFocus();
+                }
+            }
+            ImGui::EndCombo();
+        }
+
+        ImGui::SliderFloat("Render Scale", &renderScale, 0.3f, 1.0f);
+        ImGui::InputFloat4("data1", reinterpret_cast<float*>(&gradientConstants_.data1));
+        ImGui::InputFloat4("data2", reinterpret_cast<float*>(&gradientConstants_.data2));
+        ImGui::InputFloat4("data3", reinterpret_cast<float*>(&gradientConstants_.data3));
+        ImGui::InputFloat4("data4", reinterpret_cast<float*>(&gradientConstants_.data4));
+
+        ImGui::SeparatorText("Console Vars");
+        ConsoleVars::drawWithImGui();
+    }
+    ImGui::End();
+
+    // Tell ImGui to calculate internal draw structures.
+    ImGui::Render();
+
+    draw();
 }
 
 void Engine::cleanup() {
     // Ensure the GPU has stopped doing its things.
     vkDeviceWaitIdle(*device_);
-
-    for (auto& mesh : testMeshes) {
-        mesh->meshBuffers.indexBuffer.clear(allocator_);
-        mesh->meshBuffers.vertexBuffer.clear(allocator_);
-    }
 
     _defaultSamplerNearest.clear();
     _defaultSamplerLinear.clear();
@@ -358,6 +348,14 @@ void Engine::cleanup() {
     debugMessenger_.clear();//vkb::destroy_debug_utils_messenger(_instance, _debug_messenger);
     instance_.clear();//vkDestroyInstance(_instance, nullptr);
     SDL_DestroyWindow(window_);
+}
+
+const vk::raii::Device& Engine::getDevice() const {
+    return device_;
+}
+
+VmaAllocator Engine::getAllocator() const {
+    return allocator_;
 }
 
 GPUMeshBuffers Engine::uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices) {
@@ -841,8 +839,6 @@ void Engine::initDefaultData() {
     sampl.minFilter = vk::Filter::eLinear;
     _defaultSamplerLinear = device_.createSampler(sampl);
 
-    testMeshes = loadGltfMeshes(this,"assets/basicmesh.glb").value();
-
     DescriptorWriter writer;
     writer.writeImage(0, _errorCheckerboardImage.imageView, _defaultSamplerNearest, vk::ImageLayout::eShaderReadOnlyOptimal, vk::DescriptorType::eCombinedImageSampler);
     writer.updateSet(device_, _singleImageDescriptors);
@@ -1069,14 +1065,26 @@ void Engine::drawGeometry(vk::CommandBuffer cmd) {
     // Invert the Y direction on projection matrix so that we are more similar to OpenGL and gltf axis.
     projection[1][1] *= -1.0f;
 
-    GPUDrawPushConstants pushConstants;
-    pushConstants.worldMatrix = projection * view;
-    pushConstants.vertexBuffer = testMeshes[2]->meshBuffers.vertexBufferAddress;
+    auto& scene = Scene::instance();
+    for (auto entity : SceneView<components::Renderable>(scene)) {
+        auto renderable = scene.accessComponent<components::Renderable>(entity);    // FIXME: naming too long, maybe use comp:: namespace and/or shorten to scene.access()?
 
-    cmd.pushConstants(meshPipelineLayout_, vk::ShaderStageFlagBits::eVertex, 0, sizeof(GPUDrawPushConstants), &pushConstants);
-    cmd.bindIndexBuffer(testMeshes[2]->meshBuffers.indexBuffer.buffer, 0, vk::IndexType::eUint32);
+        GPUDrawPushConstants pushConstants;
+        auto transform = scene.accessComponent<components::Transform>(entity);
+        if (transform == nullptr) {
+            std::cout << "  no transform component\n";
+            pushConstants.worldMatrix = projection * view;
+        } else {
+            std::cout << "  has transform, get it\n";
+            pushConstants.worldMatrix = projection * view * transform->getWorldTransform();
+        }
+        pushConstants.vertexBuffer = renderable->getMesh().meshBuffers.vertexBufferAddress;
 
-    cmd.drawIndexed(testMeshes[2]->surfaces[0].count, 1, testMeshes[2]->surfaces[0].startIndex, 0, 0);
+        cmd.pushConstants(meshPipelineLayout_, vk::ShaderStageFlagBits::eVertex, 0, sizeof(GPUDrawPushConstants), &pushConstants);
+        cmd.bindIndexBuffer(renderable->getMesh().meshBuffers.indexBuffer.buffer, 0, vk::IndexType::eUint32);
+
+        cmd.drawIndexed(renderable->getMesh().surfaces[0].count, 1, renderable->getMesh().surfaces[0].startIndex, 0, 0);
+    }
 
     cmd.endRendering();
 }

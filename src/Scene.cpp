@@ -42,9 +42,18 @@ void Scene::destroyEntity(EntityId id) {
 }
 
 void Scene::destroyAllEntities() {
-    entities_.clear();
-    freeEntityIndices_.clear();
+    // Resetting the component arrays is tricky, as some components may access others in their destructor.
+    // To make things safe, pretend that all components are gone before actually deleting them.
+    for (auto& entityInfo : entities_) {
+        entityInfo.mask.reset();
+    }
     for (auto& componentArray : componentArrays_) {
         componentArray.reset();
     }
+    freeEntityIndices_.clear();
+    entities_.clear();
+}
+
+bool Scene::isEntityAlive(EntityId id) {
+    return entities_[getEntityIndex(id)].id == id;
 }

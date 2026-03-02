@@ -5,9 +5,9 @@
 #include <span>
 
 #include <Common.h>
-#include <Loader.h>
 #include <Descriptors.h>
 
+union SDL_Event;
 struct SDL_Window;
 
 struct FrameData {
@@ -32,8 +32,12 @@ public:
     static constexpr unsigned int FRAME_OVERLAP = 2;
 
     void init();
-    void run();
+    void processEvent(const SDL_Event* event);
+    void render();
     void cleanup();
+
+    const vk::raii::Device& getDevice() const;
+    VmaAllocator getAllocator() const;
 
     GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
 
@@ -115,8 +119,6 @@ private:
 
     vk::raii::PipelineLayout meshPipelineLayout_ = nullptr;
     vk::raii::Pipeline meshPipeline_ = nullptr;
-
-    std::vector<std::shared_ptr<MeshAsset>> testMeshes;
 
     //GPUSceneData sceneData;
     //VkDescriptorSetLayout _gpuSceneDataDescriptorLayout;

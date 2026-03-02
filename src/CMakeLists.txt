@@ -1,5 +1,15 @@
+set(VKR_COMPONENTS_SRCS
+    components/Camera.cpp
+    components/Camera.h
+    components/Renderable.cpp
+    components/Renderable.h
+    components/Transform.cpp
+    components/Transform.h
+)
+
 # Create the main library from all source files.
 add_library(vkr_src
+    ${VKR_COMPONENTS_SRCS}
     Common.h
     ComponentArray.h
     ConsoleVars.cpp
@@ -9,6 +19,7 @@ add_library(vkr_src
     DisableWarning.h
     Engine.cpp
     Engine.h
+    GlmFormatters.h
     Loader.cpp
     Loader.h
     Pipelines.cpp
@@ -17,10 +28,12 @@ add_library(vkr_src
     Scene.h
     SceneView.h
     StringHash.h
-    Transform.cpp
-    Transform.h
     VmaUsage.cpp
 )
+
+# Organize source and header files for IDEs.
+source_group("Header Files/components" REGULAR_EXPRESSION "components/.*\.h")
+source_group("Source Files/components" REGULAR_EXPRESSION "components/.*\.cpp")
 
 # Specify where to find the header files to include.
 target_include_directories(vkr_src PUBLIC .)

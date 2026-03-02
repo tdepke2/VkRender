@@ -89,10 +89,13 @@ TEST_CASE("Test entity add/remove", "[Scene]") {
 
     auto e1 = s.createEntity();
     REQUIRE(seenEntities.insert(e1).second);
+    REQUIRE(s.isEntityAlive(e1));
     auto e2 = s.createEntity();
     REQUIRE(seenEntities.insert(e2).second);
+    REQUIRE(s.isEntityAlive(e2));
     auto e3 = s.createEntity();
     REQUIRE(seenEntities.insert(e3).second);
+    REQUIRE(s.isEntityAlive(e3));
 
     {
         auto sceneView = SceneView<>(s);
@@ -101,6 +104,9 @@ TEST_CASE("Test entity add/remove", "[Scene]") {
     }
 
     s.destroyEntity(e1);
+    REQUIRE_FALSE(s.isEntityAlive(e1));
+    REQUIRE(s.isEntityAlive(e2));
+    REQUIRE(s.isEntityAlive(e3));
     {
         auto sceneView = SceneView<>(s);
         auto list = {e2, e3};
@@ -110,6 +116,7 @@ TEST_CASE("Test entity add/remove", "[Scene]") {
     // Destroyed entity index can be reused with new id.
     auto e4 = s.createEntity();
     REQUIRE(seenEntities.insert(e4).second);
+    REQUIRE(s.isEntityAlive(e4));
     {
         auto sceneView = SceneView<>(s);
         auto list = {e4, e2, e3};
@@ -118,6 +125,7 @@ TEST_CASE("Test entity add/remove", "[Scene]") {
 
     auto e5 = s.createEntity();
     REQUIRE(seenEntities.insert(e5).second);
+    REQUIRE(s.isEntityAlive(e5));
     {
         auto sceneView = SceneView<>(s);
         auto list = {e4, e2, e3, e5};
@@ -125,9 +133,13 @@ TEST_CASE("Test entity add/remove", "[Scene]") {
     }
 
     s.destroyEntity(e5);
+    REQUIRE_FALSE(s.isEntityAlive(e5));
     s.destroyEntity(e3);
+    REQUIRE_FALSE(s.isEntityAlive(e3));
     s.destroyEntity(e2);
+    REQUIRE_FALSE(s.isEntityAlive(e2));
     s.destroyEntity(e4);
+    REQUIRE_FALSE(s.isEntityAlive(e4));
     {
         auto sceneView = SceneView<>(s);
         REQUIRE(sceneView.begin() == sceneView.end());
@@ -135,10 +147,13 @@ TEST_CASE("Test entity add/remove", "[Scene]") {
 
     auto e6 = s.createEntity();
     REQUIRE(seenEntities.insert(e6).second);
+    REQUIRE(s.isEntityAlive(e6));
     auto e7 = s.createEntity();
     REQUIRE(seenEntities.insert(e7).second);
+    REQUIRE(s.isEntityAlive(e7));
     auto e8 = s.createEntity();
     REQUIRE(seenEntities.insert(e8).second);
+    REQUIRE(s.isEntityAlive(e8));
     {
         auto sceneView = SceneView<>(s);
         auto list = {e6, e7, e8};
@@ -146,6 +161,9 @@ TEST_CASE("Test entity add/remove", "[Scene]") {
     }
 
     s.destroyAllEntities();
+    // After call to `destroyAllEntities()`, we cannot check if entities are
+    // alive since the state of the `Scene` has been reset and new entities
+    // would be created with previous ids.
 }
 
 template<typename T>

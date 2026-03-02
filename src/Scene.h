@@ -50,6 +50,9 @@ public:
     void destroyEntity(EntityId id);
     void destroyAllEntities();
 
+    // Check if an entity has not been destroyed. This can be done until `destroyAllEntities()` has been called.
+    bool isEntityAlive(EntityId id);
+
     // The pointer may become invalid when removing any component of the same type (or destroying an entity with the component type).
     template<typename T, typename... Args>
     T* assignComponent(EntityId id, Args&&... args);
@@ -134,6 +137,8 @@ void Scene::removeComponent(EntityId id) {
     }
 }
 
+#include <iostream>
+
 template<typename T>
 T* Scene::accessComponent(EntityId id) {
     // Ensure we're not using an entity that has been deleted.
@@ -141,6 +146,8 @@ T* Scene::accessComponent(EntityId id) {
     assert(entityInfo.id == id);
 
     if (entityInfo.mask.test(getComponentId<T>())) {
+        std::cout << "accessComponent(" << id << ")\n";
+        std::cout << "the array has address " << getComponentArray<T>() << "\n";
         return &(*getComponentArray<T>())[getEntityIndex(id)];
     } else {
         return nullptr;
