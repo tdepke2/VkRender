@@ -18,13 +18,18 @@ private:
     };
 
 public:
+    // Factory function to create a new Transform that is managed by the Scene.
+    // It is an error to call this for an entity that already has a Transform.
     static Transform* addToScene(EntityId id, std::optional<EntityId> parent = std::nullopt);
+    // Destroys the entity and all descendants (if the entity has a Transform).
+    static void destroyEntityRecursive(EntityId id);
+
     Transform(Private, EntityId id, std::optional<EntityId> parent);
     ~Transform();
     Transform(const Transform& rhs) = delete;
     Transform(Transform&& rhs) noexcept = delete;
     Transform& operator=(const Transform& rhs) = delete;
-    Transform& operator=(Transform&& rhs) noexcept = default;
+    Transform& operator=(Transform&& rhs) noexcept;
 
     //void setPosition(); // maybe do translate(), rotate(), scale() instead?
     //void setScale();
@@ -32,6 +37,11 @@ public:
     //std::optional<EntityId> getParent(); // optional return val?
     // no function to set parent probably makes sense
     // children iterator?
+
+    // Destroying the child entities happens automatically as part of destruction.  FIXME: not yet, still wip
+    void destroyChildren();
+
+    void printDebug(EntityId id);
 
     const glm::vec3& getPosition() const;
     const glm::quat& getOrientation() const;
@@ -62,6 +72,7 @@ private:
     mutable glm::mat4 world_;
     mutable bool localDirty_ = true;
     mutable bool worldDirty_ = true;
+    EntityId id_;
     std::optional<EntityId> parent_;
     std::vector<EntityId> children_;
 };

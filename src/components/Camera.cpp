@@ -7,8 +7,8 @@
 namespace components {
 
 Camera* Camera::addToScene(EntityId id) {
-    assert(Scene::instance().accessComponent<Camera>(id) == nullptr);
-    return Scene::instance().assignComponent<Camera>(id, Private());
+    assert(Scene::instance().access<Camera>(id) == nullptr);
+    return Scene::instance().assign<Camera>(id, Private());
 }
 
 Camera::Camera(Private) {

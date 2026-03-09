@@ -1067,15 +1067,13 @@ void Engine::drawGeometry(vk::CommandBuffer cmd) {
 
     auto& scene = Scene::instance();
     for (auto entity : SceneView<components::Renderable>(scene)) {
-        auto renderable = scene.accessComponent<components::Renderable>(entity);    // FIXME: naming too long, maybe use comp:: namespace and/or shorten to scene.access()?
+        auto renderable = scene.access<components::Renderable>(entity);
 
         GPUDrawPushConstants pushConstants;
-        auto transform = scene.accessComponent<components::Transform>(entity);
+        auto transform = scene.access<components::Transform>(entity);
         if (transform == nullptr) {
-            std::cout << "  no transform component\n";
             pushConstants.worldMatrix = projection * view;
         } else {
-            std::cout << "  has transform, get it\n";
             pushConstants.worldMatrix = projection * view * transform->getWorldTransform();
         }
         pushConstants.vertexBuffer = renderable->getMesh().meshBuffers.vertexBufferAddress;

@@ -111,6 +111,7 @@ TEST_CASE("Test move/destruction of components", "[ComponentArray]") {
     size_t counter = 0;
 
     // Removing a component destroys it.
+    std::cout << "Removing a component destroys it.\n";
     {
         ComponentArray<TrackedData> array1;
 
@@ -124,6 +125,7 @@ TEST_CASE("Test move/destruction of components", "[ComponentArray]") {
     REQUIRE(counter == 0);
 
     // Destructor destroys all components.
+    std::cout << "Destructor destroys all components.\n";
     {
         ComponentArray<TrackedData> array1;
 
@@ -135,6 +137,7 @@ TEST_CASE("Test move/destruction of components", "[ComponentArray]") {
     REQUIRE(counter == 0);
 
     // Replacing a component with another destroys the old one.
+    std::cout << "Replacing a component with another destroys the old one.\n";
     {
         ComponentArray<TrackedData> array1;
 

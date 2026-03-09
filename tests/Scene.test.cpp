@@ -47,14 +47,14 @@ TEST_CASE("Test initial", "[Scene]") {
     auto e1 = s.createEntity();
 
     // Likewise, we should be able to access/remove one of these non-existent component types.
-    REQUIRE(s.accessComponent<MyString>(e1) == nullptr);
-    s.removeComponent<MyString>(e1);
+    REQUIRE(s.access<MyString>(e1) == nullptr);
+    s.remove<MyString>(e1);
 
     REQUIRE(priv::componentIdCounter == componentIdCounterInitial + 3);
 
     // Can assign a component for a new type.
-    REQUIRE(s.assignComponent<MyString>(e1, "my string")->v == "my string");
-    REQUIRE(s.accessComponent<MyString>(e1)->v == "my string");
+    REQUIRE(s.assign<MyString>(e1, "my string")->v == "my string");
+    REQUIRE(s.access<MyString>(e1)->v == "my string");
 
     auto sceneView2 = SceneView<MyString>(s);
     auto sceneIter2 = sceneView2.begin();
@@ -67,8 +67,8 @@ TEST_CASE("Test initial", "[Scene]") {
 
     auto e2 = s.createEntity();
     auto e3 = s.createEntity();
-    REQUIRE(s.assignComponent<MyDouble>(e3, 1.3)->v == 1.3);
-    REQUIRE(s.assignComponent<MyDouble>(e2, 1.2)->v == 1.2);
+    REQUIRE(s.assign<MyDouble>(e3, 1.3)->v == 1.3);
+    REQUIRE(s.assign<MyDouble>(e2, 1.2)->v == 1.2);
 
     // Iterating all entities returns them in order of creation.
     auto sceneView4 = SceneView<>(s);
@@ -87,15 +87,19 @@ TEST_CASE("Test entity add/remove", "[Scene]") {
     auto& s = Scene::instance();
     std::unordered_set<EntityId> seenEntities;
 
+    REQUIRE(s.getEntitiesCount() == 0);
     auto e1 = s.createEntity();
     REQUIRE(seenEntities.insert(e1).second);
     REQUIRE(s.isEntityAlive(e1));
+    REQUIRE(s.getEntitiesCount() == 1);
     auto e2 = s.createEntity();
     REQUIRE(seenEntities.insert(e2).second);
     REQUIRE(s.isEntityAlive(e2));
+    REQUIRE(s.getEntitiesCount() == 2);
     auto e3 = s.createEntity();
     REQUIRE(seenEntities.insert(e3).second);
     REQUIRE(s.isEntityAlive(e3));
+    REQUIRE(s.getEntitiesCount() == 3);
 
     {
         auto sceneView = SceneView<>(s);
@@ -107,6 +111,7 @@ TEST_CASE("Test entity add/remove", "[Scene]") {
     REQUIRE_FALSE(s.isEntityAlive(e1));
     REQUIRE(s.isEntityAlive(e2));
     REQUIRE(s.isEntityAlive(e3));
+    REQUIRE(s.getEntitiesCount() == 2);
     {
         auto sceneView = SceneView<>(s);
         auto list = {e2, e3};
@@ -117,6 +122,7 @@ TEST_CASE("Test entity add/remove", "[Scene]") {
     auto e4 = s.createEntity();
     REQUIRE(seenEntities.insert(e4).second);
     REQUIRE(s.isEntityAlive(e4));
+    REQUIRE(s.getEntitiesCount() == 3);
     {
         auto sceneView = SceneView<>(s);
         auto list = {e4, e2, e3};
@@ -126,6 +132,7 @@ TEST_CASE("Test entity add/remove", "[Scene]") {
     auto e5 = s.createEntity();
     REQUIRE(seenEntities.insert(e5).second);
     REQUIRE(s.isEntityAlive(e5));
+    REQUIRE(s.getEntitiesCount() == 4);
     {
         auto sceneView = SceneView<>(s);
         auto list = {e4, e2, e3, e5};
@@ -134,12 +141,16 @@ TEST_CASE("Test entity add/remove", "[Scene]") {
 
     s.destroyEntity(e5);
     REQUIRE_FALSE(s.isEntityAlive(e5));
+    REQUIRE(s.getEntitiesCount() == 3);
     s.destroyEntity(e3);
     REQUIRE_FALSE(s.isEntityAlive(e3));
+    REQUIRE(s.getEntitiesCount() == 2);
     s.destroyEntity(e2);
     REQUIRE_FALSE(s.isEntityAlive(e2));
+    REQUIRE(s.getEntitiesCount() == 1);
     s.destroyEntity(e4);
     REQUIRE_FALSE(s.isEntityAlive(e4));
+    REQUIRE(s.getEntitiesCount() == 0);
     {
         auto sceneView = SceneView<>(s);
         REQUIRE(sceneView.begin() == sceneView.end());
@@ -148,12 +159,15 @@ TEST_CASE("Test entity add/remove", "[Scene]") {
     auto e6 = s.createEntity();
     REQUIRE(seenEntities.insert(e6).second);
     REQUIRE(s.isEntityAlive(e6));
+    REQUIRE(s.getEntitiesCount() == 1);
     auto e7 = s.createEntity();
     REQUIRE(seenEntities.insert(e7).second);
     REQUIRE(s.isEntityAlive(e7));
+    REQUIRE(s.getEntitiesCount() == 2);
     auto e8 = s.createEntity();
     REQUIRE(seenEntities.insert(e8).second);
     REQUIRE(s.isEntityAlive(e8));
+    REQUIRE(s.getEntitiesCount() == 3);
     {
         auto sceneView = SceneView<>(s);
         auto list = {e6, e7, e8};
@@ -161,6 +175,7 @@ TEST_CASE("Test entity add/remove", "[Scene]") {
     }
 
     s.destroyAllEntities();
+    REQUIRE(s.getEntitiesCount() == 0);
     // After call to `destroyAllEntities()`, we cannot check if entities are
     // alive since the state of the `Scene` has been reset and new entities
     // would be created with previous ids.
@@ -175,7 +190,7 @@ void checkSceneView(Scene& scene, SceneView<T> sceneView, const std::vector<std:
 
     for (; first1 != last1 && first2 != last2; ++first1, ++first2) {
         REQUIRE(*first1 == first2->first);
-        REQUIRE(*scene.accessComponent<T>(*first1) == first2->second);
+        REQUIRE(*scene.access<T>(*first1) == first2->second);
     }
 
     REQUIRE(first1 == last1);
@@ -194,44 +209,44 @@ TEST_CASE("Test component add/remove", "[Scene]") {
     REQUIRE(seenEntities.insert(e3).second);
 
     // Components are iterated in order of creation.
-    s.assignComponent<int>(e3, 10);
-    s.assignComponent<int>(e2, 20);
-    s.assignComponent<int>(e1, 30);
+    s.assign<int>(e3, 10);
+    s.assign<int>(e2, 20);
+    s.assign<int>(e1, 30);
     checkSceneView(s, SceneView<int>(s), {
         {e3, 10},
         {e2, 20},
         {e1, 30},
     });
 
-    s.removeComponent<int>(e2);
+    s.remove<int>(e2);
     checkSceneView(s, SceneView<int>(s), {
         {e3, 10},
         {e1, 30},
     });
 
-    s.assignComponent<int>(e2, 40);
+    s.assign<int>(e2, 40);
     checkSceneView(s, SceneView<int>(s), {
         {e3, 10},
         {e1, 30},
         {e2, 40},
     });
 
-    s.removeComponent<int>(e2);
+    s.remove<int>(e2);
     checkSceneView(s, SceneView<int>(s), {
         {e3, 10},
         {e1, 30},
     });
 
-    s.assignComponent<int>(e2, 50);
+    s.assign<int>(e2, 50);
     checkSceneView(s, SceneView<int>(s), {
         {e3, 10},
         {e1, 30},
         {e2, 50},
     });
 
-    s.removeComponent<int>(e3);
-    s.removeComponent<int>(e2);
-    s.removeComponent<int>(e1);
+    s.remove<int>(e3);
+    s.remove<int>(e2);
+    s.remove<int>(e1);
     checkSceneView(s, SceneView<int>(s), {});
 
     s.destroyAllEntities();
@@ -262,8 +277,8 @@ TEST_CASE("Test ECS example", "[Scene]") {
         REQUIRE(seenEntities.insert(e).second);
 
         double n = static_cast<double>(rigidBodies.size() + rigidBodiesDestroyed);
-        s.assignComponent<Transform>(e, n + 0.0, n + 0.1, n + 0.2);
-        s.assignComponent<Mesh>(e, "mesh" + std::to_string(rigidBodies.size() + rigidBodiesDestroyed));
+        s.assign<Transform>(e, n + 0.0, n + 0.1, n + 0.2);
+        s.assign<Mesh>(e, "mesh" + std::to_string(rigidBodies.size() + rigidBodiesDestroyed));
         rigidBodies.push_back(e);
     };
 
@@ -273,7 +288,7 @@ TEST_CASE("Test ECS example", "[Scene]") {
         REQUIRE(seenEntities.insert(e).second);
 
         double n = static_cast<double>(particles.size() + particlesDestroyed);
-        s.assignComponent<Transform>(e, n + 0.3, n + 0.4, n + 0.5);
+        s.assign<Transform>(e, n + 0.3, n + 0.4, n + 0.5);
         particles.push_back(e);
     };
 
@@ -283,9 +298,9 @@ TEST_CASE("Test ECS example", "[Scene]") {
         REQUIRE(seenEntities.insert(e).second);
 
         double n = static_cast<double>(npcs.size() + npcsDestroyed);
-        s.assignComponent<Transform>(e, n + 0.6, n + 0.7, n + 0.8);
-        s.assignComponent<Mesh>(e, "mesh" + std::to_string(npcs.size() + npcsDestroyed));
-        s.assignComponent<CharacterData>(e, 'c');
+        s.assign<Transform>(e, n + 0.6, n + 0.7, n + 0.8);
+        s.assign<Mesh>(e, "mesh" + std::to_string(npcs.size() + npcsDestroyed));
+        s.assign<CharacterData>(e, 'c');
         npcs.push_back(e);
     };
 
@@ -293,21 +308,21 @@ TEST_CASE("Test ECS example", "[Scene]") {
         std::cout << "Entity data:\n";
         for (auto e : SceneView<>(s)) {
             std::cout << "entity " << e << "\t";
-            auto t = s.accessComponent<Transform>(e);
+            auto t = s.access<Transform>(e);
             if (t != nullptr) {
                 std::cout << " t={" << t->x << "," << t->y << "," << t->z << "}\t";
             } else {
                 std::cout << " t=null\t";
             }
 
-            auto m = s.accessComponent<Mesh>(e);
+            auto m = s.access<Mesh>(e);
             if (m != nullptr) {
                 std::cout << " m={" << m->meshName << "}\t";
             } else {
                 std::cout << " m=null\t";
             }
 
-            auto c = s.accessComponent<CharacterData>(e);
+            auto c = s.access<CharacterData>(e);
             if (c != nullptr) {
                 std::cout << " c={" << c->data << "}\n";
             } else {
@@ -368,30 +383,30 @@ TEST_CASE("Test ECS example", "[Scene]") {
     }
 
     // One NPC is fancy.
-    s.assignComponent<int>(npcs.back(), 123);
+    s.assign<int>(npcs.back(), 123);
 
     printEntityData();
 
     // Update entities a few times.
     for (size_t i = 0; i < 3; ++i) {
         for (auto e : SceneView<Transform>(s)) {
-            auto t = s.accessComponent<Transform>(e);
+            auto t = s.access<Transform>(e);
             t->x += 100.0;
             t->y += 100.0;
             t->z += 100.0;
         }
 
         for (auto e : SceneView<Mesh>(s)) {
-            s.accessComponent<Mesh>(e)->meshName += "_";
+            s.access<Mesh>(e)->meshName += "_";
         }
 
         for (auto e : SceneView<CharacterData, Mesh>(s)) {
-            s.accessComponent<Mesh>(e)->meshName += "x";
+            s.access<Mesh>(e)->meshName += "x";
         }
 
         // Update the fancy NPC.
         for (auto e : SceneView<int, CharacterData>(s)) {
-            s.accessComponent<CharacterData>(e)->data += static_cast<char>(1);
+            s.access<CharacterData>(e)->data += static_cast<char>(1);
         }
     }
 
@@ -399,49 +414,49 @@ TEST_CASE("Test ECS example", "[Scene]") {
 
     for (size_t i = 0; i < rigidBodies.size(); ++i) {
         size_t n = i + rigidBodiesDestroyed;
-        auto t = s.accessComponent<Transform>(rigidBodies[i]);
+        auto t = s.access<Transform>(rigidBodies[i]);
         REQUIRE(t->x == n + 300.0);
         REQUIRE(t->y == n + 300.1);
         REQUIRE(t->z == n + 300.2);
 
-        auto m = s.accessComponent<Mesh>(rigidBodies[i]);
+        auto m = s.access<Mesh>(rigidBodies[i]);
         REQUIRE(m->meshName == "mesh" + std::to_string(n) + "___");
 
-        auto c = s.accessComponent<CharacterData>(rigidBodies[i]);
+        auto c = s.access<CharacterData>(rigidBodies[i]);
         REQUIRE(c == nullptr);
     }
 
     for (size_t i = 0; i < particles.size(); ++i) {
         size_t n = i + particlesDestroyed;
-        auto t = s.accessComponent<Transform>(particles[i]);
+        auto t = s.access<Transform>(particles[i]);
         REQUIRE(t->x == n + 300.3);
         REQUIRE(t->y == n + 300.4);
         REQUIRE(t->z == n + 300.5);
 
-        auto m = s.accessComponent<Mesh>(particles[i]);
+        auto m = s.access<Mesh>(particles[i]);
         REQUIRE(m == nullptr);
 
-        auto c = s.accessComponent<CharacterData>(particles[i]);
+        auto c = s.access<CharacterData>(particles[i]);
         REQUIRE(c == nullptr);
     }
 
     for (size_t i = 0; i < npcs.size(); ++i) {
         size_t n = i + npcsDestroyed;
-        auto t = s.accessComponent<Transform>(npcs[i]);
+        auto t = s.access<Transform>(npcs[i]);
         REQUIRE(t->x == n + 300.6);
         REQUIRE(t->y == n + 300.7);
         REQUIRE(t->z == n + 300.8);
 
-        auto m = s.accessComponent<Mesh>(npcs[i]);
+        auto m = s.access<Mesh>(npcs[i]);
         REQUIRE(m->meshName == "mesh" + std::to_string(n) + "_x_x_x");
 
-        auto c = s.accessComponent<CharacterData>(npcs[i]);
+        auto c = s.access<CharacterData>(npcs[i]);
         if (i + 1 < npcs.size()) {
             REQUIRE(c->data == 'c');
-            REQUIRE(s.accessComponent<int>(npcs[i]) == nullptr);
+            REQUIRE(s.access<int>(npcs[i]) == nullptr);
         } else {
             REQUIRE(c->data == 'f');
-            REQUIRE(*s.accessComponent<int>(npcs[i]) == 123);
+            REQUIRE(*s.access<int>(npcs[i]) == 123);
         }
     }
 

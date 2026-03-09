@@ -7,12 +7,6 @@
 #include <bitset>
 #include <utility>
 
-
-
-#include <iostream>
-
-
-
 /**
  * Provides iteration of the entities in a scene.
  * 
@@ -112,17 +106,12 @@ public:
 
             // The first element will be unused, we need it so that this still compiles when no ComponentTypes are provided.
             std::pair<uint32_t, unsigned int> countAndId[] = {{0, 0}, getComponentCountAndId<ComponentTypes>()...};
-            std::cout << "countAndId: ";
             for (size_t i = 1; i < std::size(countAndId); ++i) {
-                std::cout << countAndId[i].first << "," << countAndId[i].second << " ";
                 componentMask_.set(countAndId[i].second);
             }
-            std::cout << "\n";
 
             // Find the component id of the array with the least number of items.
             unsigned int smallestComponentArrayId = std::min_element(countAndId + 1, countAndId + std::size(countAndId))->second;
-
-            std::cout << "smallest count id = " << smallestComponentArrayId << "\n";
 
             (setEntityIndexRange<ComponentTypes>(smallestComponentArrayId), ...);
         }
@@ -169,9 +158,8 @@ private:
 
     template<typename T>
     void setEntityIndexRange(unsigned int smallestComponentArrayId) {
-        std::cout << "setEntityIndexRange() called for " << typeid(T).name() << "\n";
+        //std::cout << "setEntityIndexRange() called for " << typeid(T).name() << "\n";
         if (Scene::getComponentId<T>() == smallestComponentArrayId) {
-            std::cout << "this is the one\n";
             if (scene_->componentArrays_[Scene::getComponentId<T>()] != nullptr) {
                 entityIndexBegin_ = scene_->getComponentArray<T>()->begin().getEntityIndexPtr();
                 entityIndexEnd_ = scene_->getComponentArray<T>()->end().getEntityIndexPtr();

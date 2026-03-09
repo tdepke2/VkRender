@@ -6,8 +6,8 @@
 namespace components {
 
 Renderable* Renderable::addToScene(EntityId id, const MeshAsset& mesh) {
-    assert(Scene::instance().accessComponent<Renderable>(id) == nullptr);
-    return Scene::instance().assignComponent<Renderable>(id, Private(), mesh);
+    assert(Scene::instance().access<Renderable>(id) == nullptr);
+    return Scene::instance().assign<Renderable>(id, Private(), mesh);
 }
 
 Renderable::Renderable(Private, const MeshAsset& mesh) :

@@ -3,6 +3,7 @@
 #include <spdlog/spdlog.h>
 
 #include <Scene.h>
+#include <SceneView.h>
 #include <components/Transform.h>
 #include <iostream>
 #include <GlmFormatters.h>
@@ -12,6 +13,45 @@
 #include <Loader.h>
 
 #include <SDL3/SDL.h>
+
+struct EvilComp {
+    EvilComp(EntityId* target) {
+        this->target = target;
+        myData = new std::string(3, nextData++);
+        std::cout << "EvilComp::ctor(), this = " << this << "\n";
+        std::cout << "  myData = " << *myData << "\n";
+    }
+    ~EvilComp() {
+        std::cout << "EvilComp::dtor(), this = " << this << "\n";
+        std::cout << "  myData = " << (myData != nullptr ? *myData : "null") << "\n";
+        delete myData;
+        auto& scene = Scene::instance();
+        if (target != nullptr) {
+            std::cout << "target " << *target << " will be destroyed\n";
+            scene.destroyEntity(*target);
+        }
+
+        std::cout << "EvilComp::dtor() finished, this = " << this << "\n";
+    }
+    EvilComp& operator=(EvilComp&& rhs) noexcept {
+        std::cout << "EvilComp::move assign()\n";
+        std::cout << "  myData = " << *myData << ", rhs = " << *rhs.myData << "\n";
+        auto& scene = Scene::instance();
+        if (target != nullptr) {
+            std::cout << "target " << *target << " will be destroyed\n";
+            scene.destroyEntity(*target);
+        }
+        target = std::move(rhs.target);
+        rhs.target = nullptr;
+        myData = std::move(rhs.myData);
+        rhs.myData = nullptr;
+        return *this;
+    }
+    EntityId* target;
+    std::string* myData;
+    static char nextData;
+};
+char EvilComp::nextData = 'A';
 
 int main() {
     spdlog::set_level(spdlog::level::debug);
@@ -66,22 +106,32 @@ int main() {
     spdlog::info("Finished running.");
     return 0;*/
 
+    auto& scene = Scene::instance();
+    auto ent0 = scene.createEntity();
+    scene.assign<EvilComp>(ent0, nullptr);
+    auto ent1 = scene.createEntity();
+    scene.assign<EvilComp>(ent1, &ent0);
+    scene.destroyEntity(ent1);
+
+    std::cout << "Finished running (it should have crashed though)\n";
+    return 0;
+
     {
         auto& s = Scene::instance();
 
         Engine engine;
 
+        auto e0 = s.createEntity();
+        auto t0 = components::Transform::addToScene(e0);
+
+        t0->move({0.0f, 2.0f, 0.0f});
+
         auto e1 = s.createEntity();
-        auto t1 = components::Transform::addToScene(e1);
+        auto t1 = components::Transform::addToScene(e1, e0);
 
         auto cam = s.createEntity();
         auto camComp = components::Camera::addToScene(cam);
         auto camTrans = components::Transform::addToScene(cam);    // FIXME: would it be better to have Camera component do this instead? maybe not.
-
-        // FIXME: some potential issues to solve
-        // we only have one scene, so all entities that exist are in the scene. perhaps this is fine and it keeps things simple, although it's different than the filament engine.
-        // pointers to components get invalidated when components or entities get removed, this isn't ideal. filament keeps these pointers valid for the lifetime of the component. allowing holes in the component arrays is the fix but is it worth it?
-            // this may be worth it, assuming that new components that get created can fill in the holes.
 
         engine.init();
 
@@ -89,6 +139,11 @@ int main() {
         testMeshes = loadGltfMeshes(&engine, "assets/basicmesh.glb").value();
 
         components::Renderable::addToScene(e1, *testMeshes[2]);
+
+        std::cout << "scene has " << s.getEntitiesCount() << " entities\n";
+        for (auto entity : SceneView<components::Transform>(s)) {
+            s.access<components::Transform>(entity)->printDebug(entity);
+        }
 
         SDL_Event event;
         bool closeWindow = false;
@@ -100,9 +155,21 @@ int main() {
                 if (event.type == SDL_EVENT_QUIT) {
                     closeWindow = true;
                 }
+                if (event.type == SDL_EVENT_KEY_DOWN) {
+                    if (event.key.key == SDLK_A) {
+                        std::cout << "delete root node\n";
+                        s.access<components::Transform>(e0)->printDebug(e0);
+                        s.destroyEntity(e0);
+
+                        std::cout << "scene has " << s.getEntitiesCount() << " entities\n";
+                        for (auto entity : SceneView<components::Transform>(s)) {
+                            s.access<components::Transform>(entity)->printDebug(entity);
+                        }
+                    }
+                }
             }
 
-            t1->rotate(glm::vec3{0.0f, glm::radians(1.0f), 0.0f});
+            //t1->rotate(glm::vec3{0.0f, glm::radians(1.0f), 0.0f});
 
             engine.render();
         }

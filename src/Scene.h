@@ -6,6 +6,7 @@
 #include <bitset>
 #include <cassert>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <vector>
 
@@ -40,36 +41,54 @@ public:
 
     static Scene& instance();
     Scene(Private);
-    ~Scene() = default;
+    ~Scene();
     Scene(const Scene& rhs) = delete;
     Scene(Scene&& rhs) noexcept = delete;
     Scene& operator=(const Scene& rhs) = delete;
     Scene& operator=(Scene&& rhs) noexcept = delete;
 
     EntityId createEntity();
+    EntityId createEntityChild(EntityId parent);
+    // Destroying an entity first destroys all of its descendants.
     void destroyEntity(EntityId id);
     void destroyAllEntities();
 
     // Check if an entity has not been destroyed. This can be done until `destroyAllEntities()` has been called.
     bool isEntityAlive(EntityId id);
+    uint32_t getEntitiesCount() const;
 
-    // The pointer may become invalid when removing any component of the same type (or destroying an entity with the component type).
+    // The pointer may become invalid when removing any component of the same
+    // type (or destroying an entity with the component type).
+    // 
+    // I was considering having this return a reference wrapper for the type so
+    // that it stays valid. For example, the Flecs framework has a `get_ref()`
+    // function that does this (I think). It would hardly improve performance
+    // though since accessing the component from the `Scene` is very fast, so
+    // this doesn't seem worth the trouble.
     template<typename T, typename... Args>
-    T* assignComponent(EntityId id, Args&&... args);
+    T* assign(EntityId id, Args&&... args);
 
     // Does nothing if component already removed.
     template<typename T>
-    void removeComponent(EntityId id);
+    void remove(EntityId id);
 
-    // See assignComponent() notes about pointer validity.
-    // Returns nullptr if component not found.
+    // See `assign()` notes about pointer validity. Returns nullptr if component
+    // not found.
     template<typename T>
-    T* accessComponent(EntityId id);
+    T* access(EntityId id);
 
 private:
+    static constexpr uint32_t INVALID_ENTITY_INDEX = std::numeric_limits<uint32_t>::max();
+
     struct EntityInfo {
         EntityId id;
+        // Identifies which components in the `componentArrays_` the entity has.
         std::bitset<MAX_COMPONENT_TYPES> mask;
+    };
+
+    struct ParentInfo {
+        EntityId parent;
+        std::vector<EntityId> children;
     };
 
     // The entity id is composed of an index (into the vector) and serial. When
@@ -89,6 +108,7 @@ private:
     }
 
     static inline bool isEntityValid(EntityId id) {
+        // Functionally the same as `getEntityIndex(id) != INVALID_ENTITY_INDEX`
         return (id >> 32) != 0;
     }
 
@@ -106,13 +126,14 @@ private:
     std::vector<EntityInfo> entities_;
     std::vector<uint32_t> freeEntityIndices_;
     std::array<std::unique_ptr<IComponentArray>, MAX_COMPONENT_TYPES> componentArrays_;
+    ComponentArray<ParentInfo> hierarchy_;
 
     template<typename... ComponentTypes>
     friend class SceneView;
 };
 
 template<typename T, typename... Args>
-T* Scene::assignComponent(EntityId id, Args&&... args) {
+T* Scene::assign(EntityId id, Args&&... args) {
     // Ensure we're not using an entity that has been deleted.
     auto& entityInfo = entities_[getEntityIndex(id)];
     assert(entityInfo.id == id);
@@ -126,7 +147,7 @@ T* Scene::assignComponent(EntityId id, Args&&... args) {
 }
 
 template<typename T>
-void Scene::removeComponent(EntityId id) {
+void Scene::remove(EntityId id) {
     // Ensure we're not using an entity that has been deleted.
     auto& entityInfo = entities_[getEntityIndex(id)];
     assert(entityInfo.id == id);
@@ -137,17 +158,13 @@ void Scene::removeComponent(EntityId id) {
     }
 }
 
-#include <iostream>
-
 template<typename T>
-T* Scene::accessComponent(EntityId id) {
+T* Scene::access(EntityId id) {
     // Ensure we're not using an entity that has been deleted.
     auto& entityInfo = entities_[getEntityIndex(id)];
     assert(entityInfo.id == id);
 
     if (entityInfo.mask.test(getComponentId<T>())) {
-        std::cout << "accessComponent(" << id << ")\n";
-        std::cout << "the array has address " << getComponentArray<T>() << "\n";
         return &(*getComponentArray<T>())[getEntityIndex(id)];
     } else {
         return nullptr;

@@ -10,29 +10,54 @@
 #include <iostream>
 
 
-
 namespace components {
 
 Transform* Transform::addToScene(EntityId id, std::optional<EntityId> parent) {
-    assert(Scene::instance().accessComponent<Transform>(id) == nullptr);
-    return Scene::instance().assignComponent<Transform>(id, Private(), id, parent);
+    assert(Scene::instance().access<Transform>(id) == nullptr);
+    return Scene::instance().assign<Transform>(id, Private(), id, parent);
+}
+
+void Transform::destroyEntityRecursive(EntityId id) {
+    // Note that we can't call this within the Transform dtor because we must be
+    // careful not to let a component destroy other components of the same type.
+    // If this happened, the component would be mid destruction in the
+    // ComponentArray while another change is being made to the array, the
+    // memory could get moved out from underneath us.
+
+    /*Scene& scene = Scene::instance();
+    auto transform = scene.access<Transform>(id);
+    if (transform == nullptr) {
+        scene.destroyEntity(id);
+        return;
+    }
+
+    for (auto child : children_) {
+        if (scene.isEntityAlive(child)) {
+            Transform* childTransform = scene.access<Transform>(child);
+            if (childTransform != nullptr) {
+                childTransform->destroyChildren();
+            }
+            scene.destroyEntity(child);
+        }
+    }
+    children_.clear();*/
 }
 
 Transform::Transform(Private, EntityId id, std::optional<EntityId> parent) :
+    id_(id),
     parent_(parent) {
 
     std::cout << "new transform, id = " << id << ", parent = " << (parent_ ? std::to_string(*parent_) : "no parent") << "\n";
     if (parent_) {
         assert(id != *parent_);
-        Scene::instance().accessComponent<Transform>(*parent_)->children_.push_back(id);
+        Scene::instance().access<Transform>(*parent_)->children_.push_back(id);
+        std::cout << "added id to parents children\n";
     }
 }
 
 Transform::~Transform() {
-    std::cout << "transform dtor, parent = " << (parent_ ? std::to_string(*parent_) : "no parent") << "\n";
-    if (parent_) {
-        assert(Scene::instance().isEntityAlive(*parent_));    // FIXME: just temp assert this
-    }
+    std::cout << "transform dtor for " << id_ << ", parent = " << (parent_ ? std::to_string(*parent_) : "no parent") << "\n";
+    std::cout << "num children = " << children_.size() << "\n";
 
     // Inform all of the children that their parent is no more.
     // We could also inform our parent (and then checks for child entity alive
@@ -40,14 +65,57 @@ Transform::~Transform() {
     Scene& scene = Scene::instance();
     for (auto child : children_) {
         if (scene.isEntityAlive(child)) {
-            std::cout << "set child " << child << " parent to null\n";
             // The child may not have a transform if components are being deleted.
-            Transform* childTransform = scene.accessComponent<Transform>(child);
+            Transform* childTransform = scene.access<Transform>(child);
             if (childTransform != nullptr) {
+                std::cout << "set childTransform with parent " << *childTransform->parent_ << " to null\n";
                 childTransform->parent_ = std::nullopt;
+                childTransform->worldTransformChanged();
             }
         }
     }
+}
+
+Transform& Transform::operator=(Transform&& rhs) noexcept {
+    std::cout << "transform move assign for " << id_ << ", parent = " << (parent_ ? std::to_string(*parent_) : "no parent") << "\n";
+    std::cout << "num children = " << children_.size() << "\n";
+
+    Scene& scene = Scene::instance();
+    for (auto child : children_) {
+        if (scene.isEntityAlive(child)) {
+            // The child may not have a transform if components are being deleted.
+            Transform* childTransform = scene.access<Transform>(child);
+            if (childTransform != nullptr) {
+                std::cout << "set childTransform with parent " << *childTransform->parent_ << " to null\n";
+                childTransform->parent_ = std::nullopt;
+                childTransform->worldTransformChanged();
+            }
+        }
+    }
+
+    position_ = std::move(rhs.position_);
+    orientation_ = std::move(rhs.orientation_);
+    scale_ = std::move(rhs.scale_);
+    origin_ = std::move(rhs.origin_);
+    local_ = std::move(rhs.local_);
+    world_ = std::move(rhs.world_);
+    localDirty_ = std::move(rhs.localDirty_);
+    worldDirty_ = std::move(rhs.worldDirty_);
+    id_ = std::move(rhs.id_);
+    parent_ = std::move(rhs.parent_);
+    children_ = std::move(rhs.children_);
+
+    return *this;
+}
+
+void Transform::destroyChildren() {
+    
+}
+
+void Transform::printDebug(EntityId id) {
+    assert(id == id_);
+    std::cout << "Transform id " << id << ", parent = " << (parent_ ? std::to_string(*parent_) : "no parent") << "\n";
+    std::cout << "  num children = " << children_.size() << "\n";
 }
 
 const glm::vec3& Transform::getPosition() const {
@@ -94,13 +162,11 @@ void Transform::scale(const glm::vec3& factor) {
 
 const glm::mat4& Transform::getLocalTransform() const {
     if (localDirty_) {
-        std::cout << "computing local transform\n";
+        //std::cout << "computing local transform\n";
         local_ = glm::translate(glm::mat4(1.0f), position_ - origin_);    // FIXME: this isn't going to be the most efficient way to calculate this.
         local_ *= glm::mat4_cast(orientation_);
         local_ = glm::scale(local_, scale_);
         localDirty_ = false;
-    } else {
-        std::cout << "local transform up to date, return it\n";
     }
     return local_;
 }
@@ -112,15 +178,13 @@ const glm::mat4& Transform::getWorldTransform() const {
 
     if (parent_) {
         if (worldDirty_) {
-            std::cout << "computing world transform\n";
-            world_ = Scene::instance().accessComponent<Transform>(*parent_)->getWorldTransform() * getLocalTransform();
+            //std::cout << "computing world transform\n";
+            world_ = Scene::instance().access<Transform>(*parent_)->getWorldTransform() * getLocalTransform();
             worldDirty_ = false;
-        } else {
-            std::cout << "world transform up to date, return it\n";
         }
         return world_;
     } else {
-        std::cout << "world transform up to date (no parent)\n";
+        //std::cout << "world transform up to date (no parent)\n";
         worldDirty_ = false;
         return getLocalTransform();
     }
@@ -136,7 +200,7 @@ void Transform::localTransformChanged() {
         return;
     }
 
-    std::cout << "local transform needs update\n";
+    //std::cout << "local transform needs update\n";
     localDirty_ = true;
     worldTransformChanged();
 }
@@ -146,12 +210,12 @@ void Transform::worldTransformChanged() {
         return;
     }
 
-    std::cout << "world transform needs update\n";
+    //std::cout << "world transform needs update\n";
     worldDirty_ = true;
     Scene& scene = Scene::instance();
     for (auto child : children_) {
         if (scene.isEntityAlive(child)) {
-            scene.accessComponent<Transform>(child)->worldTransformChanged();
+            scene.access<Transform>(child)->worldTransformChanged();
         }
     }
 }
