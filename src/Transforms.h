@@ -65,3 +65,10 @@ private:
 
     friend class Engine;
 };
+
+// FIXME: need to think about this design more, it seems like the wrong way to structure the code for ECS.
+// maybe have only the basic component data in ./components and the "manager" here in ./systems?
+// see some other implementations:
+// https://github.com/vblanco20-1/entt-breakout
+// https://github.com/Daivuk/tddod
+// https://gamedev.stackexchange.com/questions/174319/dealing-with-more-complex-entities-in-an-ecs-architecture
