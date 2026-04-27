@@ -7,28 +7,39 @@ using EntityId = uint64_t;
 
 namespace components {
 
-class Camera {
-private:
-    struct Private {
-        explicit Private() = default;
+struct Transform;
+
+struct Camera {
+    glm::mat4 projection;
+    bool ownsTransform = true;
+};
+
+class CameraSystem {
+public:
+    struct Instance {
+        EntityId id;
+        Camera* c;
+        Transform* t;
     };
 
-public:
-    static Camera* addToScene(EntityId id);
-    Camera(Private);
-    ~Camera() = default;
-    Camera(const Camera& rhs) = delete;
-    Camera(Camera&& rhs) noexcept = delete;
-    Camera& operator=(const Camera& rhs) = delete;
-    Camera& operator=(Camera&& rhs) noexcept = default;
+    ~CameraSystem() = default;
+    CameraSystem(const CameraSystem& rhs) = delete;
+    CameraSystem(CameraSystem&& rhs) noexcept = delete;
+    CameraSystem& operator=(const CameraSystem& rhs) = delete;
+    CameraSystem& operator=(CameraSystem&& rhs) noexcept = delete;
 
-    const glm::mat4& getProjection() const;
-    const glm::mat4& getViewProjection() const;
-    void setProjection(float fovYRadians, float aspect, float near, float far);
+    Instance create(EntityId id) const;
+    void destroy(EntityId id) const;
+    Instance getInstance(EntityId id) const;
+
+    const glm::mat4& getProjection(Instance inst) const;
+    const glm::mat4& getViewProjection(Instance inst) const;
+    void setProjection(Instance inst, float fovYRadians, float aspect, float near, float far) const;
 
 private:
-    // FIXME: always store the entity id with the component?
-    glm::mat4 projection_;
+    CameraSystem() = default;
+
+    friend class Engine;
 };
 
 } // namespace components

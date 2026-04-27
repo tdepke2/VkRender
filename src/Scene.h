@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace priv {
@@ -28,6 +29,7 @@ using EntityId = uint64_t;
  * Based on the following implementations:
  * https://www.david-colson.com/2020/02/09/making-a-simple-ecs.html
  * https://austinmorlan.com/posts/entity_component_system/
+ * https://www.flecs.dev/flecs/md_docs_2HierarchiesManual.html
  */
 class Scene {
 private:
@@ -54,17 +56,24 @@ public:
     void destroyAllEntities();
 
     // Check if an entity has not been destroyed. This can be done until `destroyAllEntities()` has been called.
-    bool isEntityAlive(EntityId id);
+    bool isEntityAlive(EntityId id) const;
     uint32_t getEntitiesCount() const;
+
+    std::optional<EntityId> getParent(EntityId id) const;
+    std::vector<EntityId> getChildren(EntityId id) const;
+
+    // There is currently no method to set the parent. Some components (like the
+    // Transform) use this assumption that the parent will never change. As a
+    // workaround, create a new entity and copy the components to it.
+    // void setParent(EntityId id, EntityId parent);
 
     // The pointer may become invalid when removing any component of the same
     // type (or destroying an entity with the component type).
     // 
     // I was considering having this return a reference wrapper for the type so
-    // that it stays valid. For example, the Flecs framework has a `get_ref()`
-    // function that does this (I think). It would hardly improve performance
-    // though since accessing the component from the `Scene` is very fast, so
-    // this doesn't seem worth the trouble.
+    // that it stays valid. Most ECS do not do this though. For example, EnTT
+    // offers full pointer stability as an opt-in feature but it can affect
+    // performance.
     template<typename T, typename... Args>
     T* assign(EntityId id, Args&&... args);
 
@@ -88,7 +97,7 @@ private:
 
     struct ParentInfo {
         EntityId parent;
-        std::vector<EntityId> children;
+        std::vector<EntityId> children;    // Could improve this using small vector optimization.
     };
 
     // The entity id is composed of an index (into the vector) and serial. When

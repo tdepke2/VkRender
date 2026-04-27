@@ -4,44 +4,21 @@
 #include <glm/ext/quaternion_float.hpp>
 #include <glm/mat4x4.hpp>
 #include <glm/vec3.hpp>
-#include <optional>
-#include <vector>
 
 using EntityId = uint64_t;
 
 namespace components {
 
-class Transform {
-private:
-    struct Private {
-        explicit Private() = default;
-    };
-
+// The Transform is unique as it combines data and behavior within a component, which is not typical of ECS.
+// This decision was made as the transform uses dirty bits to track pending updates in the matrices.
+// As such, there is no `TransformSystem`, the `Transform` can be directly assigned to an entity in the scene.
+struct Transform {
 public:
-    // Factory function to create a new Transform that is managed by the Scene.
-    // It is an error to call this for an entity that already has a Transform.
-    static Transform* addToScene(EntityId id, std::optional<EntityId> parent = std::nullopt);
-    // Destroys the entity and all descendants (if the entity has a Transform).
-    static void destroyEntityRecursive(EntityId id);
+    Transform(EntityId id);
 
-    Transform(Private, EntityId id, std::optional<EntityId> parent);
-    ~Transform();
-    Transform(const Transform& rhs) = delete;
-    Transform(Transform&& rhs) noexcept = delete;
-    Transform& operator=(const Transform& rhs) = delete;
-    Transform& operator=(Transform&& rhs) noexcept;
-
-    //void setPosition(); // maybe do translate(), rotate(), scale() instead?
-    //void setScale();
     //void lookAt();
-    //std::optional<EntityId> getParent(); // optional return val?
-    // no function to set parent probably makes sense
-    // children iterator?
 
-    // Destroying the child entities happens automatically as part of destruction.  FIXME: not yet, still wip
-    void destroyChildren();
-
-    void printDebug(EntityId id);
+    void printDebug();
 
     const glm::vec3& getPosition() const;
     const glm::quat& getOrientation() const;
@@ -64,17 +41,15 @@ private:
     void localTransformChanged();
     void worldTransformChanged();
 
+    EntityId id_;
     glm::vec3 position_ {0.0f};
     glm::quat orientation_ {1.0f, 0.0f, 0.0f, 0.0f};
     glm::vec3 scale_ {1.0f};
     glm::vec3 origin_ {0.0f};
     mutable glm::mat4 local_;
     mutable glm::mat4 world_;
-    mutable bool localDirty_ = true;
+    mutable bool localDirty_ = true;    // FIXME: these need to be updated on copy/move operation?
     mutable bool worldDirty_ = true;
-    EntityId id_;
-    std::optional<EntityId> parent_;
-    std::vector<EntityId> children_;
 };
 
 } // namespace components

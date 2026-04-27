@@ -14,45 +14,6 @@
 
 #include <SDL3/SDL.h>
 
-struct EvilComp {
-    EvilComp(EntityId* target) {
-        this->target = target;
-        myData = new std::string(3, nextData++);
-        std::cout << "EvilComp::ctor(), this = " << this << "\n";
-        std::cout << "  myData = " << *myData << "\n";
-    }
-    ~EvilComp() {
-        std::cout << "EvilComp::dtor(), this = " << this << "\n";
-        std::cout << "  myData = " << (myData != nullptr ? *myData : "null") << "\n";
-        delete myData;
-        auto& scene = Scene::instance();
-        if (target != nullptr) {
-            std::cout << "target " << *target << " will be destroyed\n";
-            scene.destroyEntity(*target);
-        }
-
-        std::cout << "EvilComp::dtor() finished, this = " << this << "\n";
-    }
-    EvilComp& operator=(EvilComp&& rhs) noexcept {
-        std::cout << "EvilComp::move assign()\n";
-        std::cout << "  myData = " << *myData << ", rhs = " << *rhs.myData << "\n";
-        auto& scene = Scene::instance();
-        if (target != nullptr) {
-            std::cout << "target " << *target << " will be destroyed\n";
-            scene.destroyEntity(*target);
-        }
-        target = std::move(rhs.target);
-        rhs.target = nullptr;
-        myData = std::move(rhs.myData);
-        rhs.myData = nullptr;
-        return *this;
-    }
-    EntityId* target;
-    std::string* myData;
-    static char nextData;
-};
-char EvilComp::nextData = 'A';
-
 int main() {
     spdlog::set_level(spdlog::level::debug);
     spdlog::info("Using spdlog v{}.{}.{}", SPDLOG_VER_MAJOR, SPDLOG_VER_MINOR, SPDLOG_VER_PATCH);
@@ -106,28 +67,18 @@ int main() {
     spdlog::info("Finished running.");
     return 0;*/
 
-    auto& scene = Scene::instance();
-    auto ent0 = scene.createEntity();
-    scene.assign<EvilComp>(ent0, nullptr);
-    auto ent1 = scene.createEntity();
-    scene.assign<EvilComp>(ent1, &ent0);
-    scene.destroyEntity(ent1);
-
-    std::cout << "Finished running (it should have crashed though)\n";
-    return 0;
-
     {
         auto& s = Scene::instance();
 
         Engine engine;
 
         auto e0 = s.createEntity();
-        auto t0 = components::Transform::addToScene(e0);
+        auto t0 = s.assign<components::Transform>(e0, e0);
 
         t0->move({0.0f, 2.0f, 0.0f});
 
-        auto e1 = s.createEntity();
-        auto t1 = components::Transform::addToScene(e1, e0);
+        auto e1 = s.createEntityChild(e0);
+        auto t1 = s.assign<components::Transform>(e1, e1);
 
         auto cam = s.createEntity();
         auto camComp = components::Camera::addToScene(cam);

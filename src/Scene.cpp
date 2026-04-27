@@ -37,8 +37,7 @@ EntityId Scene::createEntity() {
 
 EntityId Scene::createEntityChild(EntityId parent) {
     // Ensure we're not using an entity that has been deleted.
-    auto& parentInfo = entities_[getEntityIndex(parent)];
-    assert(parentInfo.id == parent);
+    assert(entities_[getEntityIndex(parent)].id == parent);
 
     EntityId id = createEntity();
     hierarchy_.assign(getEntityIndex(id), parent, std::vector<EntityId>{});
@@ -53,7 +52,6 @@ EntityId Scene::createEntityChild(EntityId parent) {
 }
 
 void Scene::destroyEntity(EntityId id) {
-    std::cout << "Scene::destroyEntity() for " << id << "\n";
     // Ensure we're not using an entity that has been deleted.
     auto& entityInfo = entities_[getEntityIndex(id)];
     assert(entityInfo.id == id);
@@ -63,12 +61,11 @@ void Scene::destroyEntity(EntityId id) {
         // Steal the ParentInfo as the child will make changes to `hierarchy_` and we can't hold on to a reference to it after that happens.
         auto parentInfo = std::move(hierarchy_[getEntityIndex(id)]);
         for (auto child : parentInfo.children) {
-            hierarchy_[getEntityIndex(child)].parent = INVALID_ENTITY_INDEX;
+            hierarchy_[getEntityIndex(child)].parent = makeEntityId(INVALID_ENTITY_INDEX, 0);
             destroyEntity(child);
         }
 
-        if (parentInfo.parent != INVALID_ENTITY_INDEX) {
-            std::cout << "Informing parent " << parentInfo.parent << " that child " << id << " is gone.\n";
+        if (getEntityIndex(parentInfo.parent) != INVALID_ENTITY_INDEX) {
             auto& parentsChildren = hierarchy_[getEntityIndex(parentInfo.parent)].children;
             parentsChildren.erase(std::find(parentsChildren.begin(), parentsChildren.end(), id));
         }
@@ -96,15 +93,33 @@ void Scene::destroyAllEntities() {
     for (auto& componentArray : componentArrays_) {
         componentArray.reset();
     }
+    hierarchy_.clear();
     freeEntityIndices_.clear();
     entities_.clear();
-    // FIXME: need to reset hierarchy_
 }
 
-bool Scene::isEntityAlive(EntityId id) {
+bool Scene::isEntityAlive(EntityId id) const {
     return entities_[getEntityIndex(id)].id == id;
 }
 
 uint32_t Scene::getEntitiesCount() const {
-    return entities_.size() - freeEntityIndices_.size();
+    return static_cast<uint32_t>(entities_.size() - freeEntityIndices_.size());
+}
+
+std::optional<EntityId> Scene::getParent(EntityId id) const {
+    if (hierarchy_.hasEntity(getEntityIndex(id))) {
+        auto parent = hierarchy_[getEntityIndex(id)].parent;
+        return (getEntityIndex(parent) != INVALID_ENTITY_INDEX ? std::make_optional<EntityId>(parent) : std::nullopt);
+    } else {
+        return std::nullopt;
+    }
+}
+
+std::vector<EntityId> Scene::getChildren(EntityId id) const {
+    // A copy is made of the children vector so that caller can delete entities without issues.
+    if (hierarchy_.hasEntity(getEntityIndex(id))) {
+        return hierarchy_[getEntityIndex(id)].children;
+    } else {
+        return {};
+    }
 }

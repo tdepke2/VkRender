@@ -114,6 +114,15 @@ public:
         remove(entityIndex);
     }
 
+    void clear() {
+        for (uint32_t i = 0; i < size_; ++i) {
+            std::destroy_at(getComponent(i));
+        }
+        entityIndexToComponent_.assign(MAX_SIZE, std::numeric_limits<uint32_t>::max());
+        componentToEntityIndex_.clear();
+        size_ = 0;
+    }
+
     template<typename... Args>
     Iterator assign(uint32_t entityIndex, Args&&... args) {
         static_assert(
@@ -163,7 +172,19 @@ public:
         return *getComponent(componentIndex);
     }
 
+    const T& at(uint32_t entityIndex) const {
+        auto componentIndex = entityIndexToComponent_.at(entityIndex);
+        if (componentIndex == std::numeric_limits<uint32_t>::max()) {
+            throw std::out_of_range("ComponentArray::at(): component does not exist for entity at index " + std::to_string(entityIndex) + ".");
+        }
+        return *getComponent(componentIndex);
+    }
+
     T& operator[](uint32_t entityIndex) {
+        return *getComponent(entityIndexToComponent_[entityIndex]);
+    }
+
+    const T& operator[](uint32_t entityIndex) const {
         return *getComponent(entityIndexToComponent_[entityIndex]);
     }
 
@@ -186,6 +207,10 @@ public:
 private:
     inline T* getComponent(uint32_t componentIndex) {
         return std::launder(reinterpret_cast<T*>(&data_) + componentIndex);
+    }
+
+    inline const T* getComponent(uint32_t componentIndex) const {
+        return std::launder(reinterpret_cast<const T*>(&data_) + componentIndex);
     }
 
     // Placement new and aligned memory is tricky, see following for details:

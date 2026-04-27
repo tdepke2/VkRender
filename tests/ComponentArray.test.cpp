@@ -27,6 +27,8 @@ TEST_CASE("Test access/modification", "[ComponentArray]") {
 
     REQUIRE(*array1.assign(3, 'a') == 'a');
     REQUIRE(array1.at(3) == 'a');
+    const auto& array1Ref = array1;
+    REQUIRE(array1Ref.at(3) == 'a');
     REQUIRE(array1[3] == 'a');
     REQUIRE(array1.hasEntity(3));
     REQUIRE(array1.size() == 1);
@@ -62,6 +64,26 @@ TEST_CASE("Test access/modification", "[ComponentArray]") {
     REQUIRE(array1.hasEntity(1));
     REQUIRE_FALSE(array1.hasEntity(2));
     REQUIRE(array1.hasEntity(3));
+    REQUIRE_FALSE(array1.hasEntity(4));
+    REQUIRE(array1.size() == 2);
+    REQUIRE(array1.begin() != array1.end());
+
+    // After clear, array should be empty and not retain any previous state.
+    array1.clear();
+    REQUIRE_FALSE(array1.hasEntity(0));
+    REQUIRE_FALSE(array1.hasEntity(1));
+    REQUIRE_FALSE(array1.hasEntity(2));
+    REQUIRE_FALSE(array1.hasEntity(3));
+    REQUIRE_FALSE(array1.hasEntity(4));
+    REQUIRE(array1.size() == 0);
+    REQUIRE(array1.begin() == array1.end());
+
+    REQUIRE(*array1.assign(2, 'x') == 'x');
+    REQUIRE(*array1.assign(1, 'y') == 'y');
+    REQUIRE_FALSE(array1.hasEntity(0));
+    REQUIRE(array1.hasEntity(1));
+    REQUIRE(array1.hasEntity(2));
+    REQUIRE_FALSE(array1.hasEntity(3));
     REQUIRE_FALSE(array1.hasEntity(4));
     REQUIRE(array1.size() == 2);
     REQUIRE(array1.begin() != array1.end());

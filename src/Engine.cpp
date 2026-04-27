@@ -401,6 +401,10 @@ GPUMeshBuffers Engine::uploadMesh(std::span<uint32_t> indices, std::span<Vertex>
     return newSurface;
 }
 
+Transforms& Engine::getTransforms() {
+    return transforms_;
+}
+
 void Engine::initVulkan() {
     vkb::InstanceBuilder builder;
 

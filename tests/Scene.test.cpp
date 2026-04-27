@@ -252,6 +252,74 @@ TEST_CASE("Test component add/remove", "[Scene]") {
     s.destroyAllEntities();
 }
 
+TEST_CASE("Test parent/child relations", "[Scene]") {
+    auto& s = Scene::instance();
+    std::unordered_set<EntityId> seenEntities;
+
+    auto e1 = s.createEntity();
+    REQUIRE(seenEntities.insert(e1).second);
+    REQUIRE_FALSE(s.getParent(e1));
+    REQUIRE(s.getChildren(e1).empty());
+
+    auto e2 = s.createEntityChild(e1);
+    REQUIRE(seenEntities.insert(e2).second);
+    REQUIRE(*s.getParent(e2) == e1);
+    REQUIRE(s.getChildren(e2).empty());
+    REQUIRE_FALSE(s.getParent(e1));
+    REQUIRE(s.getChildren(e1) == std::vector<EntityId>{ e2 });
+
+    auto e3 = s.createEntityChild(e2);
+    REQUIRE(seenEntities.insert(e3).second);
+    REQUIRE(*s.getParent(e3) == e2);
+    REQUIRE(s.getChildren(e3).empty());
+    REQUIRE(*s.getParent(e2) == e1);
+    REQUIRE(s.getChildren(e2) == std::vector<EntityId>{ e3 });
+
+    REQUIRE(s.isEntityAlive(e1));
+    REQUIRE(s.isEntityAlive(e2));
+    REQUIRE(s.isEntityAlive(e3));
+    // Destroying a leaf entity updates the parent.
+    s.destroyEntity(e3);
+    REQUIRE(s.isEntityAlive(e1));
+    REQUIRE(s.isEntityAlive(e2));
+    REQUIRE_FALSE(s.isEntityAlive(e3));
+    // Destroying a root entity destroys the descendants.
+    s.destroyEntity(e1);
+    REQUIRE_FALSE(s.isEntityAlive(e1));
+    REQUIRE_FALSE(s.isEntityAlive(e2));
+    REQUIRE_FALSE(s.isEntityAlive(e3));
+
+    auto e4 = s.createEntity();
+    REQUIRE(seenEntities.insert(e4).second);
+    REQUIRE_FALSE(s.getParent(e4));
+    REQUIRE(s.getChildren(e4).empty());
+
+    // Destroy children in forward order.
+    for (size_t i = 0; i < 10; ++i) {
+        REQUIRE(seenEntities.insert(s.createEntityChild(e4)).second);
+    }
+    REQUIRE_FALSE(s.getParent(e4));
+    REQUIRE(s.getChildren(e4).size() == 10);
+    for (auto child : s.getChildren(e4)) {
+        s.destroyEntity(child);
+    }
+    REQUIRE(s.getChildren(e4).empty());
+
+    // Destroy children in reverse order.
+    for (size_t i = 0; i < 10; ++i) {
+        REQUIRE(seenEntities.insert(s.createEntityChild(e4)).second);
+    }
+    REQUIRE_FALSE(s.getParent(e4));
+    REQUIRE(s.getChildren(e4).size() == 10);
+    auto children = s.getChildren(e4);
+    for (auto child = children.rbegin(); child != children.rend(); ++child) {
+        s.destroyEntity(*child);
+    }
+    REQUIRE(s.getChildren(e4).empty());
+
+    s.destroyAllEntities();
+}
+
 struct Transform {
     double x, y, z;
 };
