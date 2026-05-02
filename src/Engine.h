@@ -6,7 +6,6 @@
 
 #include <Common.h>
 #include <Descriptors.h>
-#include <Transforms.h>
 
 union SDL_Event;
 struct SDL_Window;
@@ -41,8 +40,6 @@ public:
     VmaAllocator getAllocator() const;
 
     GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
-
-    Transforms& getTransforms();
 
 private:
     void initVulkan();
@@ -140,6 +137,4 @@ private:
     bool resizeRequested = false;
     bool freeze_rendering = false;
     float renderScale = 1.0f;
-
-    Transforms transforms_;
 };

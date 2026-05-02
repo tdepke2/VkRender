@@ -11,6 +11,7 @@
 #include <components/Camera.h>
 #include <components/Renderable.h>
 #include <Loader.h>
+#include <TransformInstance.h>
 
 #include <SDL3/SDL.h>
 
@@ -68,32 +69,32 @@ int main() {
     return 0;*/
 
     {
-        auto& s = Scene::instance();
+        Scene scene;
 
         Engine engine;
 
-        auto e0 = s.createEntity();
-        auto t0 = s.assign<components::Transform>(e0, e0);
+        auto e0 = scene.createEntity();
+        auto t0 = TransformInstance::create(scene, e0);
 
-        t0->move({0.0f, 2.0f, 0.0f});
+        t0.move({0.0f, 2.0f, 0.0f});
 
-        auto e1 = s.createEntityChild(e0);
-        auto t1 = s.assign<components::Transform>(e1, e1);
+        auto e1 = scene.createEntityChild(e0);
+        auto t1 = TransformInstance::create(scene, e1);
 
-        auto cam = s.createEntity();
-        auto camComp = components::Camera::addToScene(cam);
-        auto camTrans = components::Transform::addToScene(cam);    // FIXME: would it be better to have Camera component do this instead? maybe not.
+        auto cam = scene.createEntity();
+        //auto camComp = components::Camera::addToScene(cam);
+        //auto camTrans = components::Transform::addToScene(cam);    // FIXME: would it be better to have Camera component do this instead? maybe not.
 
         engine.init();
 
         std::vector<std::shared_ptr<MeshAsset>> testMeshes;
         testMeshes = loadGltfMeshes(&engine, "assets/basicmesh.glb").value();
 
-        components::Renderable::addToScene(e1, *testMeshes[2]);
+        //components::Renderable::addToScene(e1, *testMeshes[2]);
 
-        std::cout << "scene has " << s.getEntitiesCount() << " entities\n";
-        for (auto entity : SceneView<components::Transform>(s)) {
-            s.access<components::Transform>(entity)->printDebug(entity);
+        std::cout << "scene has " << scene.getEntitiesCount() << " entities\n";
+        for (auto entity : SceneView<components::Transform>(scene)) {
+            TransformInstance::get(scene, entity).printDebug();
         }
 
         SDL_Event event;
@@ -109,12 +110,12 @@ int main() {
                 if (event.type == SDL_EVENT_KEY_DOWN) {
                     if (event.key.key == SDLK_A) {
                         std::cout << "delete root node\n";
-                        s.access<components::Transform>(e0)->printDebug(e0);
-                        s.destroyEntity(e0);
+                        TransformInstance::get(scene, e0).printDebug();
+                        scene.destroyEntity(e0);
 
-                        std::cout << "scene has " << s.getEntitiesCount() << " entities\n";
-                        for (auto entity : SceneView<components::Transform>(s)) {
-                            s.access<components::Transform>(entity)->printDebug(entity);
+                        std::cout << "scene has " << scene.getEntitiesCount() << " entities\n";
+                        for (auto entity : SceneView<components::Transform>(scene)) {
+                            TransformInstance::get(scene, entity).printDebug();
                         }
                     }
                 }

@@ -13,13 +13,6 @@ namespace priv {
     unsigned int componentIdCounter = 0;
 }
 
-Scene& Scene::instance() {
-    static std::unique_ptr<Scene> scene = std::make_unique<Scene>(Private());
-    return *scene;
-}
-
-Scene::Scene(Private) {}
-
 Scene::~Scene() {
     destroyAllEntities();
 }

@@ -32,17 +32,11 @@ using EntityId = uint64_t;
  * https://www.flecs.dev/flecs/md_docs_2HierarchiesManual.html
  */
 class Scene {
-private:
-    struct Private {
-        explicit Private() = default;
-    };
-
 public:
     static constexpr uint32_t MAX_ENTITIES = IComponentArray::MAX_SIZE;    // FIXME: throw exception if we create and entity and this is exceeded?
     static constexpr uint32_t MAX_COMPONENT_TYPES = 32;
 
-    static Scene& instance();
-    Scene(Private);
+    Scene() = default;
     ~Scene();
     Scene(const Scene& rhs) = delete;
     Scene(Scene&& rhs) noexcept = delete;

@@ -26,6 +26,7 @@
 #include <Loader.h>
 #include <Scene.h>
 #include <SceneView.h>
+#include <TransformInstance.h>
 
 #include <spdlog/fmt/fmt.h>
 
@@ -399,10 +400,6 @@ GPUMeshBuffers Engine::uploadMesh(std::span<uint32_t> indices, std::span<Vertex>
     staging.clear(allocator_);
 
     return newSurface;
-}
-
-Transforms& Engine::getTransforms() {
-    return transforms_;
 }
 
 void Engine::initVulkan() {
@@ -1074,11 +1071,11 @@ void Engine::drawGeometry(vk::CommandBuffer cmd) {
         auto renderable = scene.access<components::Renderable>(entity);
 
         GPUDrawPushConstants pushConstants;
-        auto transform = scene.access<components::Transform>(entity);
-        if (transform == nullptr) {
-            pushConstants.worldMatrix = projection * view;
+        auto transform = TransformInstance::get(scene, entity);
+        if (transform.isValid()) {
+            pushConstants.worldMatrix = projection * view * transform.getWorldTransform();
         } else {
-            pushConstants.worldMatrix = projection * view * transform->getWorldTransform();
+            pushConstants.worldMatrix = projection * view;
         }
         pushConstants.vertexBuffer = renderable->getMesh().meshBuffers.vertexBufferAddress;
 

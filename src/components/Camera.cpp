@@ -12,7 +12,7 @@ CameraSystem::Instance CameraSystem::create(EntityId id) const {
     auto transform = scene.access<Transform>(id);
     auto camera = scene.assign<Camera>(id);
     if (transform == nullptr) {
-        return {id, camera, scene.assign<Transform>(id, id)};
+        return {id, camera, scene.assign<Transform>(id)};
     } else {
         camera->ownsTransform = false;
         return {id, camera, transform};

@@ -3,7 +3,6 @@ set(VKR_COMPONENTS_SRCS
     components/Camera.h
     components/Renderable.cpp
     components/Renderable.h
-    components/Transform.cpp
     components/Transform.h
 )
 
@@ -28,6 +27,8 @@ add_library(vkr_src
     Scene.h
     SceneView.h
     StringHash.h
+    TransformInstance.cpp
+    TransformInstance.h
     VmaUsage.cpp
 )
 
