@@ -7,6 +7,7 @@
 #include <Common.h>
 #include <Descriptors.h>
 
+class Scene;
 union SDL_Event;
 struct SDL_Window;
 
@@ -33,7 +34,7 @@ public:
 
     void init();
     void processEvent(const SDL_Event* event);
-    void render();
+    void render(Scene& scene);
     void cleanup();
 
     const vk::raii::Device& getDevice() const;
@@ -56,9 +57,9 @@ private:
     void initDefaultData();
 
     FrameData& getCurrentFrame() { return frames_[frameNumber_ % FRAME_OVERLAP]; };
-    void draw();
+    void draw(Scene& scene);
     void drawBackground(vk::CommandBuffer cmd);
-    void drawGeometry(vk::CommandBuffer cmd);
+    void drawGeometry(vk::CommandBuffer cmd, Scene& scene);
     void drawImGui(vk::CommandBuffer cmd, vk::ImageView targetImageView);
     void immediateSubmit(std::function<void(vk::CommandBuffer cmd)>&& function);
     AllocatedBuffer createBuffer(size_t allocSize, vk::BufferUsageFlags usage, VmaMemoryUsage memoryUsage);

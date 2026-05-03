@@ -32,7 +32,7 @@ struct MyString {
 };
 
 TEST_CASE("Test initial", "[Scene]") {
-    auto& s = Scene::instance();
+    Scene s;
 
     // Catch2 does not specify the order these test cases will run, and in practice it seems random.
     // We cannot reset the value of `priv::componentIdCounter` because other component ids may have been decided already (and bound to static vars).
@@ -81,10 +81,11 @@ TEST_CASE("Test initial", "[Scene]") {
     REQUIRE(std::equal(sceneView5.begin(), sceneView5.end(), list2.begin(), list2.end()));
 
     s.destroyAllEntities();
+    REQUIRE(s.getEntitiesCount() == 0);
 }
 
 TEST_CASE("Test entity add/remove", "[Scene]") {
-    auto& s = Scene::instance();
+    Scene s;
     std::unordered_set<EntityId> seenEntities;
 
     REQUIRE(s.getEntitiesCount() == 0);
@@ -198,7 +199,7 @@ void checkSceneView(Scene& scene, SceneView<T> sceneView, const std::vector<std:
 }
 
 TEST_CASE("Test component add/remove", "[Scene]") {
-    auto& s = Scene::instance();
+    Scene s;
     std::unordered_set<EntityId> seenEntities;
 
     auto e1 = s.createEntity();
@@ -250,10 +251,11 @@ TEST_CASE("Test component add/remove", "[Scene]") {
     checkSceneView(s, SceneView<int>(s), {});
 
     s.destroyAllEntities();
+    REQUIRE(s.getEntitiesCount() == 0);
 }
 
 TEST_CASE("Test parent/child relations", "[Scene]") {
-    auto& s = Scene::instance();
+    Scene s;
     std::unordered_set<EntityId> seenEntities;
 
     auto e1 = s.createEntity();
@@ -318,6 +320,7 @@ TEST_CASE("Test parent/child relations", "[Scene]") {
     REQUIRE(s.getChildren(e4).empty());
 
     s.destroyAllEntities();
+    REQUIRE(s.getEntitiesCount() == 0);
 }
 
 struct Transform {
@@ -331,7 +334,7 @@ struct CharacterData {
 };
 
 TEST_CASE("Test ECS example", "[Scene]") {
-    auto& s = Scene::instance();
+    Scene s;
     std::unordered_set<EntityId> seenEntities;
 
     std::vector<EntityId> rigidBodies, particles, npcs;
@@ -529,4 +532,5 @@ TEST_CASE("Test ECS example", "[Scene]") {
     }
 
     s.destroyAllEntities();
+    REQUIRE(s.getEntitiesCount() == 0);
 }

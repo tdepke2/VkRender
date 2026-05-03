@@ -188,7 +188,7 @@ void Engine::processEvent(const SDL_Event* event) {
     }
 }
 
-void Engine::render() {
+void Engine::render(Scene& scene) {
     if (freeze_rendering) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
         return;
@@ -286,7 +286,7 @@ void Engine::render() {
     // Tell ImGui to calculate internal draw structures.
     ImGui::Render();
 
-    draw();
+    draw(scene);
 }
 
 void Engine::cleanup() {
@@ -845,7 +845,7 @@ void Engine::initDefaultData() {
     writer.updateSet(device_, _singleImageDescriptors);
 }
 
-void Engine::draw() {
+void Engine::draw(Scene& scene) {
     // Wait until the gpu has finished rendering the last frame, timeout of 1 second.
     device_.waitForFences(*getCurrentFrame().renderFence, vk::True, 1000000000);    // FIXME: need to VK_CHECK() this
 
@@ -896,7 +896,7 @@ void Engine::draw() {
     transitionImage(cmd, drawImage_.image, vk::ImageLayout::eGeneral, vk::ImageLayout::eColorAttachmentOptimal);
     transitionImage(cmd, depthImage_.image, vk::ImageLayout::eUndefined, vk::ImageLayout::eDepthAttachmentOptimal);
 
-    drawGeometry(cmd);
+    drawGeometry(cmd, scene);
 
     // Transition the draw image and the swapchain image into their correct transfer layouts.
     transitionImage(cmd, drawImage_.image, vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::eTransferSrcOptimal);
@@ -995,7 +995,7 @@ void Engine::drawBackground(vk::CommandBuffer cmd) {
     cmd.dispatch(static_cast<uint32_t>(std::ceil(drawExtent_.width / 16.0)), static_cast<uint32_t>(std::ceil(drawExtent_.height / 16.0)), 1);
 }
 
-void Engine::drawGeometry(vk::CommandBuffer cmd) {
+void Engine::drawGeometry(vk::CommandBuffer cmd, Scene& scene) {
     vk::RenderingAttachmentInfo colorAttachment = {
         .imageView = drawImage_.imageView,
         .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
@@ -1066,7 +1066,6 @@ void Engine::drawGeometry(vk::CommandBuffer cmd) {
     // Invert the Y direction on projection matrix so that we are more similar to OpenGL and gltf axis.
     projection[1][1] *= -1.0f;
 
-    auto& scene = Scene::instance();
     for (auto entity : SceneView<components::Renderable>(scene)) {
         auto renderable = scene.access<components::Renderable>(entity);
 
@@ -1077,12 +1076,12 @@ void Engine::drawGeometry(vk::CommandBuffer cmd) {
         } else {
             pushConstants.worldMatrix = projection * view;
         }
-        pushConstants.vertexBuffer = renderable->getMesh().meshBuffers.vertexBufferAddress;
+        pushConstants.vertexBuffer = renderable->mesh->meshBuffers.vertexBufferAddress;
 
         cmd.pushConstants(meshPipelineLayout_, vk::ShaderStageFlagBits::eVertex, 0, sizeof(GPUDrawPushConstants), &pushConstants);
-        cmd.bindIndexBuffer(renderable->getMesh().meshBuffers.indexBuffer.buffer, 0, vk::IndexType::eUint32);
+        cmd.bindIndexBuffer(renderable->mesh->meshBuffers.indexBuffer.buffer, 0, vk::IndexType::eUint32);
 
-        cmd.drawIndexed(renderable->getMesh().surfaces[0].count, 1, renderable->getMesh().surfaces[0].startIndex, 0, 0);
+        cmd.drawIndexed(renderable->mesh->surfaces[0].count, 1, renderable->mesh->surfaces[0].startIndex, 0, 0);
     }
 
     cmd.endRendering();

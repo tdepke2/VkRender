@@ -12,6 +12,7 @@
 #include <components/Renderable.h>
 #include <Loader.h>
 #include <TransformInstance.h>
+#include <CameraInstance.h>
 
 #include <SDL3/SDL.h>
 
@@ -82,15 +83,14 @@ int main() {
         auto t1 = TransformInstance::create(scene, e1);
 
         auto cam = scene.createEntity();
-        //auto camComp = components::Camera::addToScene(cam);
-        //auto camTrans = components::Transform::addToScene(cam);    // FIXME: would it be better to have Camera component do this instead? maybe not.
+        auto camera = CameraInstance::create(scene, cam);
 
         engine.init();
 
         std::vector<std::shared_ptr<MeshAsset>> testMeshes;
         testMeshes = loadGltfMeshes(&engine, "assets/basicmesh.glb").value();
 
-        //components::Renderable::addToScene(e1, *testMeshes[2]);
+        scene.assign<components::Renderable>(e1, testMeshes[2].get());
 
         std::cout << "scene has " << scene.getEntitiesCount() << " entities\n";
         for (auto entity : SceneView<components::Transform>(scene)) {
@@ -121,9 +121,9 @@ int main() {
                 }
             }
 
-            //t1->rotate(glm::vec3{0.0f, glm::radians(1.0f), 0.0f});
+            t1.rotate(glm::vec3{0.0f, glm::radians(1.0f), 0.0f});
 
-            engine.render();
+            engine.render(scene);
         }
 
         engine.getDevice().waitIdle();

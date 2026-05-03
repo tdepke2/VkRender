@@ -1,7 +1,5 @@
 set(VKR_COMPONENTS_SRCS
-    components/Camera.cpp
     components/Camera.h
-    components/Renderable.cpp
     components/Renderable.h
     components/Transform.h
 )
@@ -9,6 +7,8 @@ set(VKR_COMPONENTS_SRCS
 # Create the main library from all source files.
 add_library(vkr_src
     ${VKR_COMPONENTS_SRCS}
+    CameraInstance.cpp
+    CameraInstance.h
     Common.h
     ComponentArray.h
     ConsoleVars.cpp
