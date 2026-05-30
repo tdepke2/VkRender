@@ -10,6 +10,7 @@ namespace components {
 
 using EntityId = uint64_t;
 class Scene;
+class TransformInstance;
 
 class CameraInstance {
 public:
@@ -18,12 +19,14 @@ public:
     static CameraInstance get(Scene& scene, EntityId id);
 
     inline bool isValid() const {
-        return c_ != nullptr && t_ != nullptr;
+        return c_ != nullptr;
     }
 
     const glm::mat4& getProjection() const;
-    const glm::mat4& getViewProjection() const;
+    glm::mat4 getViewProjection() const;
     void setProjection(float fovYRadians, float aspect, float near, float far);
+
+    TransformInstance getTransform() const;
 
 private:
     CameraInstance(Scene& scene, EntityId id, components::Camera* c, components::Transform* t);

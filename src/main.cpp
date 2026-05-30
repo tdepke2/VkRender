@@ -13,6 +13,7 @@
 #include <Loader.h>
 #include <TransformInstance.h>
 #include <CameraInstance.h>
+#include <View.h>
 
 #include <SDL3/SDL.h>
 
@@ -74,6 +75,8 @@ int main() {
 
         Engine engine;
 
+        View view(scene);
+
         auto e0 = scene.createEntity();
         auto t0 = TransformInstance::create(scene, e0);
 
@@ -82,15 +85,38 @@ int main() {
         auto e1 = scene.createEntityChild(e0);
         auto t1 = TransformInstance::create(scene, e1);
 
+        t1.move({2.0f, 0.0f, 0.0f});
+
+        auto e2 = scene.createEntityChild(e1);
+        auto t2 = TransformInstance::create(scene, e2);
+
+        t2.move({0.0f, 1.0f, 0.0f});
+        //t2.setScale({2.0f, 1.3f, 0.1f});
+
         auto cam = scene.createEntity();
         auto camera = CameraInstance::create(scene, cam);
+        view.setCamera(cam);
+
+        camera.getTransform().setPosition({0.0f, 0.0f, 5.0f});
+        camera.setProjection(glm::radians(70.0f), static_cast<float>(17 * 40) / static_cast<float>(9 * 40), 10000.0f, 0.1f);
 
         engine.init();
 
         std::vector<std::shared_ptr<MeshAsset>> testMeshes;
         testMeshes = loadGltfMeshes(&engine, "assets/basicmesh.glb").value();
 
-        scene.assign<components::Renderable>(e1, testMeshes[2].get());
+        scene.assign<components::Renderable>(e0, testMeshes[1].get());
+        //scene.assign<components::Renderable>(e1, testMeshes[2].get());
+        scene.assign<components::Renderable>(e2, testMeshes[1].get());
+
+
+        //std::cout << "get e0 transform...\n";
+        //t0.getWorldTransform();
+        
+        //std::cout << "get e1 transform...\n";
+        //t1.getWorldTransform();
+
+        
 
         std::cout << "scene has " << scene.getEntitiesCount() << " entities\n";
         for (auto entity : SceneView<components::Transform>(scene)) {
@@ -109,9 +135,9 @@ int main() {
                 }
                 if (event.type == SDL_EVENT_KEY_DOWN) {
                     if (event.key.key == SDLK_A) {
-                        std::cout << "delete root node\n";
+                        std::cout << "delete root node transform\n";
                         TransformInstance::get(scene, e0).printDebug();
-                        scene.destroyEntity(e0);
+                        TransformInstance::destroy(scene, e0);
 
                         std::cout << "scene has " << scene.getEntitiesCount() << " entities\n";
                         for (auto entity : SceneView<components::Transform>(scene)) {
@@ -121,9 +147,9 @@ int main() {
                 }
             }
 
-            t1.rotate(glm::vec3{0.0f, glm::radians(1.0f), 0.0f});
+            t1.rotate(glm::vec3{glm::radians(1.1f), glm::radians(1.0f), 0.0f});
 
-            engine.render(scene);
+            engine.render(view);
         }
 
         engine.getDevice().waitIdle();

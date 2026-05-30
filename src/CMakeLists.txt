@@ -29,6 +29,8 @@ add_library(vkr_src
     StringHash.h
     TransformInstance.cpp
     TransformInstance.h
+    View.cpp
+    View.h
     VmaUsage.cpp
 )
 
@@ -52,6 +54,11 @@ target_link_libraries(vkr_src PUBLIC
     fastgltf::fastgltf
 )
 vkr_add_cxx_properties(vkr_src)
+
+target_compile_definitions(vkr_src PUBLIC
+    GLM_FORCE_DEPTH_ZERO_TO_ONE
+    VULKAN_HPP_NO_CONSTRUCTORS
+)
 
 add_executable(vk_render
     main.cpp

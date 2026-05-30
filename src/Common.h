@@ -1,7 +1,7 @@
 #pragma once
 
 // FIXME: we should look into precompiled headers, see vk_types.h and corresponding cmake files.
-#define VULKAN_HPP_NO_CONSTRUCTORS
+//#define VULKAN_HPP_NO_CONSTRUCTORS
 #include <vulkan/vulkan_raii.hpp>
 #include <vulkan/vk_enum_string_helper.h>    // FIXME: we want vk::to_string() instead
 
@@ -12,7 +12,7 @@
 
 // FIXME: I don't like this, why is it needed? I had to set this once we introduced perspective projection with 10000 near and 0.1 far planes.
 // Setting it here isn't good either. It could go in cmake scripts.
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE
+//#define GLM_FORCE_DEPTH_ZERO_TO_ONE
 
 #include <glm/mat4x4.hpp>
 #include <glm/vec4.hpp>

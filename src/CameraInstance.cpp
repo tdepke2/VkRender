@@ -2,6 +2,7 @@
 #include <components/Camera.h>
 #include <components/Transform.h>
 #include <Scene.h>
+#include <TransformInstance.h>
 
 #include <glm/ext/matrix_clip_space.hpp>
 
@@ -9,7 +10,8 @@ CameraInstance CameraInstance::create(Scene& scene, EntityId id) {
     auto c = scene.assign<components::Camera>(id);
     auto t = scene.access<components::Transform>(id);
     if (t == nullptr) {
-        return {scene, id, c, scene.assign<components::Transform>(id)};
+        TransformInstance::create(scene, id);
+        return {scene, id, c, scene.access<components::Transform>(id)};
     } else {
         c->ownsTransform = false;
         return {scene, id, c, t};
@@ -17,8 +19,9 @@ CameraInstance CameraInstance::create(Scene& scene, EntityId id) {
 }
 
 void CameraInstance::destroy(Scene& scene, EntityId id) {
-    if (scene.access<components::Camera>(id)->ownsTransform) {
-        scene.remove<components::Transform>(id);
+    auto c = scene.access<components::Camera>(id);
+    if (c != nullptr && c->ownsTransform) {
+        TransformInstance::destroy(scene, id);
     }
     scene.remove<components::Camera>(id);
 }
@@ -31,9 +34,12 @@ const glm::mat4& CameraInstance::getProjection() const {
     return c_->projection;
 }
 
-const glm::mat4& CameraInstance::getViewProjection() const {
-    // FIXME: NYI
-    return {};
+glm::mat4 CameraInstance::getViewProjection() const {
+    if (t_ != nullptr) {
+        return c_->projection * glm::inverse(getTransform().getWorldTransform());
+    } else {
+        return c_->projection;
+    }
 }
 
 void CameraInstance::setProjection(float fovYRadians, float aspect, float near, float far) {
@@ -42,6 +48,10 @@ void CameraInstance::setProjection(float fovYRadians, float aspect, float near, 
     // Invert the Y direction on projection matrix so that we are more similar to OpenGL and gltf axis.
     // FIXME: will need to verify this is the right approach
     c_->projection[1][1] *= -1.0f;
+}
+
+TransformInstance CameraInstance::getTransform() const {
+    return TransformInstance::get(*scene_, id_, t_);
 }
 
 CameraInstance::CameraInstance(Scene& scene, EntityId id, components::Camera* c, components::Transform* t) :

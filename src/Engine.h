@@ -7,9 +7,9 @@
 #include <Common.h>
 #include <Descriptors.h>
 
-class Scene;
 union SDL_Event;
 struct SDL_Window;
+class View;
 
 struct FrameData {
     vk::raii::Semaphore swapchainSemaphore = nullptr;
@@ -34,7 +34,7 @@ public:
 
     void init();
     void processEvent(const SDL_Event* event);
-    void render(Scene& scene);
+    void render(View& view);
     void cleanup();
 
     const vk::raii::Device& getDevice() const;
@@ -57,9 +57,9 @@ private:
     void initDefaultData();
 
     FrameData& getCurrentFrame() { return frames_[frameNumber_ % FRAME_OVERLAP]; };
-    void draw(Scene& scene);
+    void draw(View& view);
     void drawBackground(vk::CommandBuffer cmd);
-    void drawGeometry(vk::CommandBuffer cmd, Scene& scene);
+    void drawGeometry(vk::CommandBuffer cmd, View& view);
     void drawImGui(vk::CommandBuffer cmd, vk::ImageView targetImageView);
     void immediateSubmit(std::function<void(vk::CommandBuffer cmd)>&& function);
     AllocatedBuffer createBuffer(size_t allocSize, vk::BufferUsageFlags usage, VmaMemoryUsage memoryUsage);

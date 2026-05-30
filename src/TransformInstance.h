@@ -17,6 +17,7 @@ public:
     static TransformInstance create(Scene& scene, EntityId id);
     static void destroy(Scene& scene, EntityId id);
     static TransformInstance get(Scene& scene, EntityId id);
+    static TransformInstance get(Scene& scene, EntityId id, components::Transform* t);
 
     inline bool isValid() const {
         return t_ != nullptr;
@@ -29,11 +30,9 @@ public:
     const glm::vec3& getPosition() const;
     const glm::quat& getOrientation() const;
     const glm::vec3& getScale() const;
-    const glm::vec3& getOrigin() const;
     void setPosition(const glm::vec3& position);
     void setOrientation(const glm::quat& orientation);
     void setScale(const glm::vec3& scale);
-    void setOrigin(const glm::vec3& origin);
 
     void move(const glm::vec3& offset);
     void rotate(const glm::quat& angle);

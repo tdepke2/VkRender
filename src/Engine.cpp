@@ -8,9 +8,6 @@
 
 #include <spdlog/spdlog.h>
 
-#define GLM_ENABLE_EXPERIMENTAL
-#include <glm/gtx/transform.hpp>
-
 #include <imgui.h>
 #include <backends/imgui_impl_sdl3.h>
 #include <backends/imgui_impl_vulkan.h>
@@ -20,6 +17,7 @@
 #include <iterator>
 #include <thread>
 
+#include <CameraInstance.h>
 #include <components/Renderable.h>
 #include <components/Transform.h>
 #include <ConsoleVars.h>
@@ -27,7 +25,10 @@
 #include <Scene.h>
 #include <SceneView.h>
 #include <TransformInstance.h>
+#include <View.h>
+#include <GlmFormatters.h>
 
+#include <glm/packing.hpp>
 #include <spdlog/fmt/fmt.h>
 
 namespace {
@@ -188,7 +189,7 @@ void Engine::processEvent(const SDL_Event* event) {
     }
 }
 
-void Engine::render(Scene& scene) {
+void Engine::render(View& view) {
     if (freeze_rendering) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
         return;
@@ -286,7 +287,7 @@ void Engine::render(Scene& scene) {
     // Tell ImGui to calculate internal draw structures.
     ImGui::Render();
 
-    draw(scene);
+    draw(view);
 }
 
 void Engine::cleanup() {
@@ -845,7 +846,7 @@ void Engine::initDefaultData() {
     writer.updateSet(device_, _singleImageDescriptors);
 }
 
-void Engine::draw(Scene& scene) {
+void Engine::draw(View& view) {
     // Wait until the gpu has finished rendering the last frame, timeout of 1 second.
     device_.waitForFences(*getCurrentFrame().renderFence, vk::True, 1000000000);    // FIXME: need to VK_CHECK() this
 
@@ -856,11 +857,11 @@ void Engine::draw(Scene& scene) {
     uint32_t swapchainImageIndex = 0;
     try {
         auto result = swapchain_.acquireNextImage(1000000000, getCurrentFrame().swapchainSemaphore, nullptr);
-        if (result.first == vk::Result::eErrorOutOfDateKHR) {
+        if (!result.has_value()) {
             resizeRequested = true;
             return;
         }
-        swapchainImageIndex = result.second;
+        swapchainImageIndex = *result;
     } catch(const vk::SystemError& e) {
         if (e.code().value() == static_cast<int>(vk::Result::eErrorOutOfDateKHR)) {
             resizeRequested = true;
@@ -896,7 +897,7 @@ void Engine::draw(Scene& scene) {
     transitionImage(cmd, drawImage_.image, vk::ImageLayout::eGeneral, vk::ImageLayout::eColorAttachmentOptimal);
     transitionImage(cmd, depthImage_.image, vk::ImageLayout::eUndefined, vk::ImageLayout::eDepthAttachmentOptimal);
 
-    drawGeometry(cmd, scene);
+    drawGeometry(cmd, view);
 
     // Transition the draw image and the swapchain image into their correct transfer layouts.
     transitionImage(cmd, drawImage_.image, vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::eTransferSrcOptimal);
@@ -995,7 +996,7 @@ void Engine::drawBackground(vk::CommandBuffer cmd) {
     cmd.dispatch(static_cast<uint32_t>(std::ceil(drawExtent_.width / 16.0)), static_cast<uint32_t>(std::ceil(drawExtent_.height / 16.0)), 1);
 }
 
-void Engine::drawGeometry(vk::CommandBuffer cmd, Scene& scene) {
+void Engine::drawGeometry(vk::CommandBuffer cmd, View& view) {
     vk::RenderingAttachmentInfo colorAttachment = {
         .imageView = drawImage_.imageView,
         .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
@@ -1060,11 +1061,9 @@ void Engine::drawGeometry(vk::CommandBuffer cmd, Scene& scene) {
     vk::DescriptorSet tempFIXME = _singleImageDescriptors;
     cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, meshPipelineLayout_, 0, 1, &tempFIXME, 0, nullptr);
 
-    glm::mat4 view = glm::translate(glm::vec3{ 0, 0, -5 });
-    glm::mat4 projection = glm::perspective(glm::radians(70.0f), static_cast<float>(drawExtent_.width) / static_cast<float>(drawExtent_.height), 10000.0f, 0.1f);
-
-    // Invert the Y direction on projection matrix so that we are more similar to OpenGL and gltf axis.
-    projection[1][1] *= -1.0f;
+    auto& scene = view.getScene();
+    auto camera = CameraInstance::get(scene, view.getCamera());
+    auto viewProjection = camera.getViewProjection();
 
     for (auto entity : SceneView<components::Renderable>(scene)) {
         auto renderable = scene.access<components::Renderable>(entity);
@@ -1072,9 +1071,9 @@ void Engine::drawGeometry(vk::CommandBuffer cmd, Scene& scene) {
         GPUDrawPushConstants pushConstants;
         auto transform = TransformInstance::get(scene, entity);
         if (transform.isValid()) {
-            pushConstants.worldMatrix = projection * view * transform.getWorldTransform();
+            pushConstants.worldMatrix = viewProjection * transform.getWorldTransform();
         } else {
-            pushConstants.worldMatrix = projection * view;
+            pushConstants.worldMatrix = viewProjection;
         }
         pushConstants.vertexBuffer = renderable->mesh->meshBuffers.vertexBufferAddress;
 

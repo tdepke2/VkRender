@@ -6,7 +6,6 @@
 #include <spdlog/fmt/fmt.h>
 
 // Formatting GLM types to string is already available in the library, the output for some types is not the best though.
-//#define GLM_ENABLE_EXPERIMENTAL
 //#include <glm/gtx/string_cast.hpp>
 
 template<>
