@@ -32,6 +32,7 @@ add_library(vkr_src
     View.cpp
     View.h
     VmaUsage.cpp
+    VmaUsage.h
 )
 
 # Organize source and header files for IDEs.
@@ -56,8 +57,8 @@ target_link_libraries(vkr_src PUBLIC
 vkr_add_cxx_properties(vkr_src)
 
 target_compile_definitions(vkr_src PUBLIC
-    GLM_FORCE_DEPTH_ZERO_TO_ONE
-    VULKAN_HPP_NO_CONSTRUCTORS
+    GLM_FORCE_DEPTH_ZERO_TO_ONE     # The OpenGL clip space is -1 to 1 in z-axis, we want 0 to 1.
+    VULKAN_HPP_NO_CONSTRUCTORS      # Don't use the constructors for Vulkan types, we will use designated initializers from C++20.
 )
 
 add_executable(vk_render

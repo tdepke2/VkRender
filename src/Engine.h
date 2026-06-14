@@ -97,10 +97,10 @@ private:
     AllocatedImage depthImage_;
     vk::Extent2D drawExtent_;
 
-    DescriptorAllocator globalDescriptorAllocator;
+    DescriptorAllocator globalDescriptorAllocator_;
 
-    vk::raii::DescriptorSet _drawImageDescriptors = nullptr;
-    vk::raii::DescriptorSetLayout _drawImageDescriptorLayout = nullptr;
+    vk::raii::DescriptorSet drawImageDescriptors_ = nullptr;
+    vk::raii::DescriptorSetLayout drawImageDescriptorLayout_ = nullptr;
 
     vk::raii::Pipeline gradientPipeline_ = nullptr;
     vk::raii::PipelineLayout gradientPipelineLayout_ = nullptr;
@@ -116,7 +116,7 @@ private:
     vk::raii::CommandPool immCommandPool_ = nullptr;
     vk::raii::CommandBuffer immCommandBuffer_ = nullptr;
 
-    vk::raii::DescriptorPool imguiPool = nullptr;
+    vk::raii::DescriptorPool imguiPool_ = nullptr;
 
     vk::raii::PipelineLayout meshPipelineLayout_ = nullptr;
     vk::raii::Pipeline meshPipeline_ = nullptr;
@@ -124,18 +124,18 @@ private:
     //GPUSceneData sceneData;
     //VkDescriptorSetLayout _gpuSceneDataDescriptorLayout;
 
-    AllocatedImage _whiteImage;
-    AllocatedImage _blackImage;
-    AllocatedImage _greyImage;
-    AllocatedImage _errorCheckerboardImage;
+    AllocatedImage whiteImage_;
+    AllocatedImage blackImage_;
+    AllocatedImage greyImage_;
+    AllocatedImage errorCheckerboardImage_;
 
-    vk::raii::Sampler _defaultSamplerLinear = nullptr;
-    vk::raii::Sampler _defaultSamplerNearest = nullptr;
+    vk::raii::Sampler defaultSamplerLinear_ = nullptr;
+    vk::raii::Sampler defaultSamplerNearest_ = nullptr;
 
-    vk::raii::DescriptorSet _singleImageDescriptors = nullptr;
-    vk::raii::DescriptorSetLayout _singleImageDescriptorLayout = nullptr;
+    vk::raii::DescriptorSet singleImageDescriptors_ = nullptr;
+    vk::raii::DescriptorSetLayout singleImageDescriptorLayout_ = nullptr;
 
-    bool resizeRequested = false;
-    bool freeze_rendering = false;
-    float renderScale = 1.0f;
+    bool resizeRequested_ = false;
+    bool freezeRendering_ = false;
+    float renderScale_ = 1.0f;
 };

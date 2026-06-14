@@ -16,6 +16,7 @@
 #include <chrono>
 #include <iterator>
 #include <thread>
+#include <cassert>
 
 #include <CameraInstance.h>
 #include <components/Renderable.h>
@@ -35,7 +36,7 @@ namespace {
 
 constexpr uint32_t vulkanApiVersion = vk::ApiVersion13;    // FIXME: move to vulkan 1.4? see: https://docs.vulkan.org/tutorial/latest/03_Drawing_a_triangle/00_Setup/01_Instance.html
 
-constexpr bool enableValidationLayers = true;
+constexpr bool enableValidationLayers = true;    // FIXME: only enable in debug builds
 
 struct DisplayResolution {
     unsigned int width, height;
@@ -79,7 +80,7 @@ constexpr std::array<DisplayResolution, 8> displayResolutions16To10 = {{
 
 void transitionImage(vk::CommandBuffer cmd, vk::Image image, vk::ImageLayout currentLayout, vk::ImageLayout newLayout) {
     vk::ImageMemoryBarrier2 imageBarrier = {
-        .srcStageMask = vk::PipelineStageFlagBits2::eAllCommands,
+        .srcStageMask = vk::PipelineStageFlagBits2::eAllCommands,    // FIXME: doing this transition may be inefficient (https://vkguide.dev/docs/new_chapter_1/vulkan_mainloop_code/), revisit when we do frame graph?
         .srcAccessMask = vk::AccessFlagBits2::eMemoryWrite,
         .dstStageMask = vk::PipelineStageFlagBits2::eAllCommands,
         .dstAccessMask = vk::AccessFlagBits2::eMemoryWrite | vk::AccessFlagBits2::eMemoryRead,
@@ -183,19 +184,19 @@ void Engine::processEvent(const SDL_Event* event) {
     ImGui_ImplSDL3_ProcessEvent(event);
 
     if (event->type == SDL_EVENT_WINDOW_MINIMIZED) {
-        freeze_rendering = true;
+        freezeRendering_ = true;
     } else if (event->type == SDL_EVENT_WINDOW_RESTORED) {
-        freeze_rendering = false;
+        freezeRendering_ = false;
     }
 }
 
 void Engine::render(View& view) {
-    if (freeze_rendering) {
+    if (freezeRendering_) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
         return;
     }
 
-    if (resizeRequested && !resizeSwapchain()) {
+    if (resizeRequested_ && !resizeSwapchain()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
         return;
     }
@@ -273,7 +274,7 @@ void Engine::render(View& view) {
             ImGui::EndCombo();
         }
 
-        ImGui::SliderFloat("Render Scale", &renderScale, 0.3f, 1.0f);
+        ImGui::SliderFloat("Render Scale", &renderScale_, 0.3f, 1.0f);
         ImGui::InputFloat4("data1", reinterpret_cast<float*>(&gradientConstants_.data1));
         ImGui::InputFloat4("data2", reinterpret_cast<float*>(&gradientConstants_.data2));
         ImGui::InputFloat4("data3", reinterpret_cast<float*>(&gradientConstants_.data3));
@@ -294,18 +295,18 @@ void Engine::cleanup() {
     // Ensure the GPU has stopped doing its things.
     vkDeviceWaitIdle(*device_);
 
-    _defaultSamplerNearest.clear();
-    _defaultSamplerLinear.clear();
+    defaultSamplerNearest_.clear();
+    defaultSamplerLinear_.clear();
 
-    _whiteImage.clear(allocator_);
-    _greyImage.clear(allocator_);
-    _blackImage.clear(allocator_);
-    _errorCheckerboardImage.clear(allocator_);
+    whiteImage_.clear(allocator_);
+    greyImage_.clear(allocator_);
+    blackImage_.clear(allocator_);
+    errorCheckerboardImage_.clear(allocator_);
 
     ImGui_ImplVulkan_Shutdown();
     ImGui_ImplSDL3_Shutdown();
     ImGui::DestroyContext();
-    imguiPool.clear();//vkDestroyDescriptorPool(*device_, imguiPool, nullptr);
+    imguiPool_.clear();//vkDestroyDescriptorPool(*device_, imguiPool_, nullptr);
 
     meshPipelineLayout_.clear();//vkDestroyPipelineLayout(*device_, _meshPipelineLayout, nullptr);
     meshPipeline_.clear();//vkDestroyPipeline(*device_, _meshPipeline, nullptr);
@@ -317,12 +318,12 @@ void Engine::cleanup() {
         _frames[i]._frameDescriptors.destroy_pools(*device_);
     }*/
 
-    _singleImageDescriptors.clear();
-    _singleImageDescriptorLayout.clear();//vkDestroyDescriptorSetLayout(*device_, _singleImageDescriptorLayout, nullptr);
-    _drawImageDescriptors.clear();
-    _drawImageDescriptorLayout.clear();//vkDestroyDescriptorSetLayout(*device_, _drawImageDescriptorLayout, nullptr);
+    singleImageDescriptors_.clear();
+    singleImageDescriptorLayout_.clear();//vkDestroyDescriptorSetLayout(*device_, singleImageDescriptorLayout_, nullptr);
+    drawImageDescriptors_.clear();
+    drawImageDescriptorLayout_.clear();//vkDestroyDescriptorSetLayout(*device_, drawImageDescriptorLayout_, nullptr);
 
-    globalDescriptorAllocator.destroyPool();
+    globalDescriptorAllocator_.destroyPool();
 
     immFence_.clear();//vkDestroyFence(*device_, _immFence, nullptr);
 
@@ -442,7 +443,7 @@ void Engine::initVulkan() {
     vkb::PhysicalDeviceSelector selector(vkbInst);
     vkb::PhysicalDevice physicalDevice = selector
         .set_surface(*surface_)
-        .set_minimum_version(1, 3)
+        .set_minimum_version(vk::versionMajor(vulkanApiVersion), vk::versionMinor(vulkanApiVersion))
         .set_required_features_12(features12)
         .set_required_features_13(features13)
         .select()
@@ -536,7 +537,7 @@ bool Engine::resizeSwapchain() {
 
     createSwapchain(windowExtent_.width, windowExtent_.height);
 
-    resizeRequested = false;
+    resizeRequested_ = false;
     return true;
 }
 
@@ -598,20 +599,20 @@ void Engine::initDescriptors() {
         { vk::DescriptorType::eCombinedImageSampler, 1 }
     };
 
-    globalDescriptorAllocator.initPool(device_, 10, sizes);
+    globalDescriptorAllocator_.initPool(device_, 10, sizes);
 
     // Descriptor set for our compute draw.
     {
         DescriptorLayoutBuilder builder;
         builder.addBinding(0, vk::DescriptorType::eStorageImage);
-        _drawImageDescriptorLayout = builder.build(device_, vk::ShaderStageFlagBits::eCompute);
+        drawImageDescriptorLayout_ = builder.build(device_, vk::ShaderStageFlagBits::eCompute);
 
-        _drawImageDescriptors = globalDescriptorAllocator.allocate(device_, _drawImageDescriptorLayout);
+        drawImageDescriptors_ = globalDescriptorAllocator_.allocate(device_, drawImageDescriptorLayout_);
 
         DescriptorWriter writer;
         writer.writeImage(0, *drawImage_.imageView, nullptr, vk::ImageLayout::eGeneral, vk::DescriptorType::eStorageImage);
 
-        writer.updateSet(device_, _drawImageDescriptors);
+        writer.updateSet(device_, drawImageDescriptors_);
     }
 
     /*{
@@ -636,9 +637,9 @@ void Engine::initDescriptors() {
     {
         DescriptorLayoutBuilder builder;
         builder.addBinding(0, vk::DescriptorType::eCombinedImageSampler);
-        _singleImageDescriptorLayout = builder.build(device_, vk::ShaderStageFlagBits::eFragment);
+        singleImageDescriptorLayout_ = builder.build(device_, vk::ShaderStageFlagBits::eFragment);
 
-        _singleImageDescriptors = globalDescriptorAllocator.allocate(device_, _singleImageDescriptorLayout);
+        singleImageDescriptors_ = globalDescriptorAllocator_.allocate(device_, singleImageDescriptorLayout_);
     }
 }
 
@@ -649,11 +650,9 @@ void Engine::initPipelines() {
         .size = sizeof(ComputePushConstants),
     };
 
-    vk::DescriptorSetLayout layoutCopyFIXME = _drawImageDescriptorLayout;
-
     vk::PipelineLayoutCreateInfo computeLayout = {
         .setLayoutCount = 1,
-        .pSetLayouts = &layoutCopyFIXME,
+        .pSetLayouts = &*drawImageDescriptorLayout_,
         .pushConstantRangeCount = 1,
         .pPushConstantRanges = &pushConstant,
     };
@@ -687,11 +686,9 @@ void Engine::initMeshPipeline() {
         .size = sizeof(GPUDrawPushConstants),
     };
 
-    vk::DescriptorSetLayout layoutCopyFIXME = _singleImageDescriptorLayout;
-
     vk::PipelineLayoutCreateInfo pipelineLayoutInfo = {
         .setLayoutCount = 1,
-        .pSetLayouts = &layoutCopyFIXME,
+        .pSetLayouts = &*singleImageDescriptorLayout_,
         .pushConstantRangeCount = 1,
         .pPushConstantRanges = &bufferRange,
     };
@@ -745,7 +742,7 @@ void Engine::initImGui() {
         poolInfo.maxSets += poolSize.descriptorCount;
     }
 
-    imguiPool = vk::raii::DescriptorPool(device_, poolInfo);
+    imguiPool_ = vk::raii::DescriptorPool(device_, poolInfo);
 
     // Setup Dear ImGui context.
     IMGUI_CHECKVERSION();
@@ -763,7 +760,7 @@ void Engine::initImGui() {
     initInfo.Device = *device_;
     initInfo.QueueFamily = graphicsQueueFamily_;
     initInfo.Queue = *graphicsQueue_;
-    initInfo.DescriptorPool = *imguiPool;
+    initInfo.DescriptorPool = *imguiPool_;
     initInfo.MinImageCount = 2;
     initInfo.ImageCount = 2;
     initInfo.UseDynamicRendering = true;
@@ -809,15 +806,15 @@ void Engine::initDefaultData() {
 
     //3 default textures, white, grey, black. 1 pixel each
     uint32_t white = glm::packUnorm4x8(glm::vec4(1, 1, 1, 1));
-    _whiteImage = createImage((void*)&white, vk::Extent3D{ 1, 1, 1 }, vk::Format::eR8G8B8A8Unorm,
+    whiteImage_ = createImage((void*)&white, vk::Extent3D{ 1, 1, 1 }, vk::Format::eR8G8B8A8Unorm,
         vk::ImageUsageFlagBits::eSampled);
 
     uint32_t grey = glm::packUnorm4x8(glm::vec4(0.66f, 0.66f, 0.66f, 1));
-    _greyImage = createImage((void*)&grey, vk::Extent3D{ 1, 1, 1 }, vk::Format::eR8G8B8A8Unorm,
+    greyImage_ = createImage((void*)&grey, vk::Extent3D{ 1, 1, 1 }, vk::Format::eR8G8B8A8Unorm,
         vk::ImageUsageFlagBits::eSampled);
 
     uint32_t black = glm::packUnorm4x8(glm::vec4(0, 0, 0, 0));
-    _blackImage = createImage((void*)&black, vk::Extent3D{ 1, 1, 1 }, vk::Format::eR8G8B8A8Unorm,
+    blackImage_ = createImage((void*)&black, vk::Extent3D{ 1, 1, 1 }, vk::Format::eR8G8B8A8Unorm,
         vk::ImageUsageFlagBits::eSampled);
 
     //checkerboard image
@@ -828,27 +825,27 @@ void Engine::initDefaultData() {
             pixels[y*16 + x] = ((x % 2) ^ (y % 2)) ? magenta : black;
         }
     }
-    _errorCheckerboardImage = createImage(pixels.data(), vk::Extent3D{16, 16, 1}, vk::Format::eR8G8B8A8Unorm,
+    errorCheckerboardImage_ = createImage(pixels.data(), vk::Extent3D{16, 16, 1}, vk::Format::eR8G8B8A8Unorm,
         vk::ImageUsageFlagBits::eSampled);
 
     vk::SamplerCreateInfo sampl = {
         .magFilter = vk::Filter::eNearest,
         .minFilter = vk::Filter::eNearest
     };
-    _defaultSamplerNearest = device_.createSampler(sampl);
+    defaultSamplerNearest_ = device_.createSampler(sampl);
 
     sampl.magFilter = vk::Filter::eLinear;
     sampl.minFilter = vk::Filter::eLinear;
-    _defaultSamplerLinear = device_.createSampler(sampl);
+    defaultSamplerLinear_ = device_.createSampler(sampl);
 
     DescriptorWriter writer;
-    writer.writeImage(0, _errorCheckerboardImage.imageView, _defaultSamplerNearest, vk::ImageLayout::eShaderReadOnlyOptimal, vk::DescriptorType::eCombinedImageSampler);
-    writer.updateSet(device_, _singleImageDescriptors);
+    writer.writeImage(0, errorCheckerboardImage_.imageView, defaultSamplerNearest_, vk::ImageLayout::eShaderReadOnlyOptimal, vk::DescriptorType::eCombinedImageSampler);
+    writer.updateSet(device_, singleImageDescriptors_);
 }
 
 void Engine::draw(View& view) {
     // Wait until the gpu has finished rendering the last frame, timeout of 1 second.
-    device_.waitForFences(*getCurrentFrame().renderFence, vk::True, 1000000000);    // FIXME: need to VK_CHECK() this
+    VK_CHECK(device_.waitForFences(*getCurrentFrame().renderFence, vk::True, 1000000000));
 
     //getCurrentFrame()._frameDescriptors.clear_pools(*device_);
 
@@ -858,23 +855,24 @@ void Engine::draw(View& view) {
     try {
         auto result = swapchain_.acquireNextImage(1000000000, getCurrentFrame().swapchainSemaphore, nullptr);
         if (!result.has_value()) {
-            resizeRequested = true;
+            resizeRequested_ = true;
             return;
         }
         swapchainImageIndex = *result;
     } catch(const vk::SystemError& e) {
         if (e.code().value() == static_cast<int>(vk::Result::eErrorOutOfDateKHR)) {
-            resizeRequested = true;
+            resizeRequested_ = true;
             return;
+        } else {
+            VK_CHECK(e.code().value());    // FIXME: please verify this is right, I think we got this from kronos vk tutorial. similar code is at the end of this function.
         }
-        // FIXME: VK_CHECK() the result now
     }
 
     // Reset the fence after checking for resize. If we reset it too early and skip this frame for a resize, the next wait for it would deadlock.
     device_.resetFences(*getCurrentFrame().renderFence);
 
-    drawExtent_.width = static_cast<uint32_t>(std::min(swapchainExtent_.width, drawImage_.imageExtent.width) * renderScale);
-    drawExtent_.height = static_cast<uint32_t>(std::min(swapchainExtent_.height, drawImage_.imageExtent.height) * renderScale);
+    drawExtent_.width = static_cast<uint32_t>(std::min(swapchainExtent_.width, drawImage_.imageExtent.width) * renderScale_);
+    drawExtent_.height = static_cast<uint32_t>(std::min(swapchainExtent_.height, drawImage_.imageExtent.height) * renderScale_);
 
     vk::CommandBuffer cmd = getCurrentFrame().mainCommandBuffer;
 
@@ -959,16 +957,17 @@ void Engine::draw(View& view) {
     try {
         auto result = graphicsQueue_.presentKHR(presentInfo);
         if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR) {
-            resizeRequested = true;
+            resizeRequested_ = true;
         }
     } catch(const vk::SystemError& e) {
         if (e.code().value() == static_cast<int>(vk::Result::eErrorOutOfDateKHR)) {
-            resizeRequested = true;
+            resizeRequested_ = true;
+        } else {
+            VK_CHECK(e.code().value());
         }
-        // FIXME: VK_CHECK() the result now
     }
 
-    frameNumber_++;
+    ++frameNumber_;
 }
 
 void Engine::drawBackground(vk::CommandBuffer cmd) {
@@ -987,8 +986,7 @@ void Engine::drawBackground(vk::CommandBuffer cmd) {
     cmd.bindPipeline(vk::PipelineBindPoint::eCompute, gradientPipeline_);
 
     // Bind the descriptor set containing the draw image for the compute pipeline.
-    vk::DescriptorSet tempFIXME = _drawImageDescriptors;
-    cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, gradientPipelineLayout_, 0, 1, &tempFIXME, 0, nullptr);
+    cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, gradientPipelineLayout_, 0, 1, &*drawImageDescriptors_, 0, nullptr);
 
     cmd.pushConstants(gradientPipelineLayout_, vk::ShaderStageFlagBits::eCompute, 0, sizeof(ComputePushConstants), &gradientConstants_);
 
@@ -1058,8 +1056,7 @@ void Engine::drawGeometry(vk::CommandBuffer cmd, View& view) {
     writer.write_buffer(0, gpuSceneDataBuffer.buffer, sizeof(GPUSceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
     writer.update_set(*device_, globalDescriptor);*/
 
-    vk::DescriptorSet tempFIXME = _singleImageDescriptors;
-    cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, meshPipelineLayout_, 0, 1, &tempFIXME, 0, nullptr);
+    cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, meshPipelineLayout_, 0, 1, &*singleImageDescriptors_, 0, nullptr);
 
     auto& scene = view.getScene();
     auto camera = CameraInstance::get(scene, view.getCamera());
@@ -1135,7 +1132,7 @@ void Engine::immediateSubmit(std::function<void(vk::CommandBuffer cmd)>&& functi
     // Submit command buffer to the queue and execute it.
     graphicsQueue_.submit2(submitInfo, immFence_);
 
-    device_.waitForFences(*immFence_, vk::True, std::numeric_limits<uint64_t>::max());    // FIXME: need to VK_CHECK() this
+    VK_CHECK(device_.waitForFences(*immFence_, vk::True, std::numeric_limits<uint64_t>::max()));
 }
 
 AllocatedBuffer Engine::createBuffer(size_t allocSize, vk::BufferUsageFlags usage, VmaMemoryUsage memoryUsage) {
