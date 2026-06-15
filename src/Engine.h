@@ -1,11 +1,12 @@
 #pragma once
 
-#include <functional>
-#include <vector>
-#include <span>
-
 #include <Common.h>
 #include <Descriptors.h>
+#include <EngineSettings.h>
+
+#include <functional>
+#include <span>
+#include <vector>
 
 union SDL_Event;
 struct SDL_Window;
@@ -66,6 +67,7 @@ private:
     AllocatedImage createImage(vk::Extent3D size, vk::Format format, vk::ImageUsageFlags usage, bool mipmapped = false);
     AllocatedImage createImage(void* data, vk::Extent3D size, vk::Format format, vk::ImageUsageFlags usage, bool mipmapped = false);
 
+    EngineSettings settings_;
     uint64_t frameNumber_ = 0;
 
     vk::Extent2D windowExtent_ = { 17 * 40 , 9 * 40 };

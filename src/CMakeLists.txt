@@ -18,6 +18,8 @@ add_library(vkr_src
     DisableWarning.h
     Engine.cpp
     Engine.h
+    EngineSettings.cpp
+    EngineSettings.h
     GlmFormatters.h
     Loader.cpp
     Loader.h
