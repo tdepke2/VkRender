@@ -110,25 +110,32 @@ void copyImageToImage(vk::CommandBuffer cmd, vk::Image source, vk::Image destina
 
 }
 
+Engine::Engine() :
+    settings_(*this) {
+
+    settings_.createCVars();
+}
+
 void Engine::init() {
     SDL_Init(SDL_INIT_VIDEO);
 
     // FIXME: recommended to use SDL_SetAppMetadata() after startup, see SDL api reference
     // FIXME: need to call SDL_Quit() at end?
 
-    SDL_WindowFlags windowFlags = SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE;
+    windowExtent_.width = CVarInt::access("v.width").get();
+    windowExtent_.height = CVarInt::access("v.height").get();
+
+    SDL_WindowFlags windowFlags = SDL_WINDOW_VULKAN;// | SDL_WINDOW_RESIZABLE;
     window_ = SDL_CreateWindow("Vulkan Engine", windowExtent_.width, windowExtent_.height, windowFlags);
     if (window_ == nullptr) {
         spdlog::error("SDL failed to create window: {}", SDL_GetError());
         abort();
     }
 
-    settings_.setEngine(this);
-    settings_.createCVars();
-
     initVulkan();
 
     initSwapchain();
+    settings_.setResolution(windowExtent_.width, windowExtent_.height);
 
     initCommands();
 
@@ -159,10 +166,11 @@ void Engine::render(View& view) {
         return;
     }
 
-    if (resizeRequested_ && !resizeSwapchain()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        return;
-    }
+    // FIXME: if swapchain becomes invalid (resizeRequested_ true), should we force a resize to the current size?
+    //if (resizeRequested_ && !resizeSwapchain()) {
+    //    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    //    return;
+    //}
 
     // ImGui new frame.
     ImGui_ImplVulkan_NewFrame();
@@ -241,8 +249,6 @@ void Engine::cleanup() {
         frames_[i].swapchainSemaphore.clear();//vkDestroySemaphore(*device_ ,_frames[i]._swapchainSemaphore, nullptr);
     }
 
-    depthImage_.clear(allocator_);
-    drawImage_.clear(allocator_);
     destroySwapchain();
 
     surface_.clear();
@@ -373,22 +379,7 @@ void Engine::initVulkan() {
 }
 
 void Engine::initSwapchain() {
-    createSwapchain(windowExtent_.width, windowExtent_.height);
-
-    // Draw/depth image sizes will match the window.
-    vk::Extent3D imageExtent = {
-        .width = windowExtent_.width,
-        .height = windowExtent_.height,
-        .depth = 1
-    };
-
-    drawImage_ = createImage(imageExtent, vk::Format::eR16G16B16A16Sfloat,
-        vk::ImageUsageFlagBits::eTransferSrc |
-        vk::ImageUsageFlagBits::eStorage |
-        vk::ImageUsageFlagBits::eColorAttachment);
-
-    depthImage_ = createImage(imageExtent, vk::Format::eD32Sfloat,
-        vk::ImageUsageFlagBits::eDepthStencilAttachment);
+    //createSwapchain(windowExtent_.width, windowExtent_.height);
 }
 
 void Engine::createSwapchain(uint32_t width, uint32_t height) {
@@ -420,29 +411,56 @@ void Engine::createSwapchain(uint32_t width, uint32_t height) {
     std::transform(imageViews.begin(), imageViews.end(), std::back_inserter(swapchainImageViews_), [this](VkImageView v) {
         return vk::raii::ImageView(device_, v);
     });
+
+    vk::Extent3D imageExtent = {
+        .width = width,
+        .height = height,
+        .depth = 1
+    };
+
+    drawImage_ = createImage(imageExtent, vk::Format::eR16G16B16A16Sfloat,
+        vk::ImageUsageFlagBits::eTransferSrc |
+        vk::ImageUsageFlagBits::eStorage |
+        vk::ImageUsageFlagBits::eColorAttachment);
+
+    depthImage_ = createImage(imageExtent, vk::Format::eD32Sfloat,
+        vk::ImageUsageFlagBits::eDepthStencilAttachment);
 }
 
-bool Engine::resizeSwapchain() {
+bool Engine::resizeSwapchain(uint32_t width, uint32_t height) {
     device_.waitIdle();
 
     destroySwapchain();
 
-    int width = 0, height = 0;
+    /*int width = 0, height = 0;
     SDL_GetWindowSize(window_, &width, &height);
     if (width == 0 || height == 0) {
         return false;
     }
 
     windowExtent_.width = width;
-    windowExtent_.height = height;
+    windowExtent_.height = height;*/
 
-    createSwapchain(windowExtent_.width, windowExtent_.height);
+    SDL_SetWindowSize(window_, width, height);
+    SDL_SyncWindow(window_);
+    int w = 0, h = 0;
+    if (SDL_GetWindowSize(window_, &w, &h)) {
+        windowExtent_.width = w;
+        windowExtent_.height = h;
+    }
+
+    createSwapchain(width, height);
+    if (drawImageDescriptors_ != nullptr) {
+        updateDescriptors();
+    }
 
     resizeRequested_ = false;
     return true;
 }
 
 void Engine::destroySwapchain() {
+    depthImage_.clear(allocator_);
+    drawImage_.clear(allocator_);
     swapchainImageViews_.clear();
     swapchain_.clear();
 }
@@ -509,11 +527,6 @@ void Engine::initDescriptors() {
         drawImageDescriptorLayout_ = builder.build(device_, vk::ShaderStageFlagBits::eCompute);
 
         drawImageDescriptors_ = globalDescriptorAllocator_.allocate(device_, drawImageDescriptorLayout_);
-
-        DescriptorWriter writer;
-        writer.writeImage(0, *drawImage_.imageView, nullptr, vk::ImageLayout::eGeneral, vk::DescriptorType::eStorageImage);
-
-        writer.updateSet(device_, drawImageDescriptors_);
     }
 
     /*{
@@ -542,6 +555,14 @@ void Engine::initDescriptors() {
 
         singleImageDescriptors_ = globalDescriptorAllocator_.allocate(device_, singleImageDescriptorLayout_);
     }
+
+    updateDescriptors();
+}
+
+void Engine::updateDescriptors() {
+    DescriptorWriter writer;
+    writer.writeImage(0, *drawImage_.imageView, nullptr, vk::ImageLayout::eGeneral, vk::DescriptorType::eStorageImage);
+    writer.updateSet(device_, drawImageDescriptors_);
 }
 
 void Engine::initPipelines() {

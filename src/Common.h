@@ -9,27 +9,31 @@
 #include <glm/vec4.hpp>
 
 struct AllocatedImage {
-    vk::Image image;
+    vk::Image image = nullptr;
     vk::raii::ImageView imageView = nullptr;
-    VmaAllocation allocation;
+    VmaAllocation allocation = nullptr;
     vk::Extent3D imageExtent;
     vk::Format imageFormat;
 
     // FIXME: this isn't great. do we want an raii wrapper for vma, or just use std::unique_ptr with custom deletor?
     void clear(VmaAllocator allocator) {
         imageView.clear();
-        vmaDestroyImage(allocator, image, allocation);
+        if (image) {
+            vmaDestroyImage(allocator, image, allocation);
+        }
     }
 };
 
 struct AllocatedBuffer {
-    vk::Buffer buffer;
-    VmaAllocation allocation;
+    vk::Buffer buffer = nullptr;
+    VmaAllocation allocation = nullptr;
     VmaAllocationInfo info;
 
     // FIXME: same issue here
     void clear(VmaAllocator allocator) {
-        vmaDestroyBuffer(allocator, buffer, allocation);
+        if (buffer) {
+            vmaDestroyBuffer(allocator, buffer, allocation);
+        }
     }
 };
 

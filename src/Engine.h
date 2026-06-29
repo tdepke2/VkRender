@@ -33,6 +33,8 @@ class Engine {
 public:
     static constexpr unsigned int FRAME_OVERLAP = 2;
 
+    Engine();
+
     void init();
     void processEvent(const SDL_Event* event);
     void render(View& view);
@@ -47,11 +49,12 @@ private:
     void initVulkan();
     void initSwapchain();
     void createSwapchain(uint32_t width, uint32_t height);
-    bool resizeSwapchain();
+    bool resizeSwapchain(uint32_t width, uint32_t height);
     void destroySwapchain();
     void initCommands();
     void initSyncStructures();
     void initDescriptors();
+    void updateDescriptors();
     void initPipelines();
     void initMeshPipeline();
     void initImGui();
@@ -70,7 +73,7 @@ private:
     EngineSettings settings_;
     uint64_t frameNumber_ = 0;
 
-    vk::Extent2D windowExtent_ = { 17 * 40 , 9 * 40 };
+    vk::Extent2D windowExtent_ = { 0, 0 };
     SDL_Window* window_ = nullptr;
 
     vk::raii::Context context_;
@@ -140,4 +143,6 @@ private:
     bool resizeRequested_ = false;
     bool freezeRendering_ = false;
     float renderScale_ = 1.0f;
+
+    friend class EngineSettings;
 };
