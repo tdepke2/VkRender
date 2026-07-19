@@ -1,5 +1,8 @@
+#pragma once
+
 #include <spdlog/fmt/bundled/base.h>
 #include <vk_mem_alloc.h>
+#include <vulkan/vulkan_raii.hpp>
 #include <vulkan/vulkan_to_string.hpp>
 
 #define VK_CHECK(x)                                                           \

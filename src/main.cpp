@@ -98,7 +98,6 @@ int main() {
         view.setCamera(cam);
 
         camera.getTransform().setPosition({0.0f, 0.0f, 5.0f});
-        camera.setProjection(glm::radians(70.0f), static_cast<float>(17 * 40) / static_cast<float>(9 * 40), 10000.0f, 0.1f);
 
         engine.init();
 
@@ -149,14 +148,17 @@ int main() {
 
             t1.rotate(glm::vec3{glm::radians(1.1f), glm::radians(1.0f), 0.0f});
 
+            if (engine.beginImGuiFrame()) {
+                engine.endImGuiFrame();
+            }
+
+            camera.setProjection(glm::radians(70.0f), static_cast<float>(engine.getWindowExtent().width) / engine.getWindowExtent().height, 10000.0f, 0.1f);
+
             engine.render(view);
         }
 
         engine.getDevice().waitIdle();
-        for (auto& mesh : testMeshes) {
-            mesh->meshBuffers.indexBuffer.clear(engine.getAllocator());
-            mesh->meshBuffers.vertexBuffer.clear(engine.getAllocator());
-        }
+        testMeshes.clear();
 
         engine.cleanup();
     }

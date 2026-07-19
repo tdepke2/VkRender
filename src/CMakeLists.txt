@@ -7,6 +7,8 @@ set(VKR_COMPONENTS_SRCS
 # Create the main library from all source files.
 add_library(vkr_src
     ${VKR_COMPONENTS_SRCS}
+    AllocatedBuffer.cpp
+    AllocatedBuffer.h
     CameraInstance.cpp
     CameraInstance.h
     Common.h
@@ -21,8 +23,12 @@ add_library(vkr_src
     EngineSettings.cpp
     EngineSettings.h
     GlmFormatters.h
+    IndexBuffer.cpp
+    IndexBuffer.h
     Loader.cpp
     Loader.h
+    Material.cpp
+    Material.h
     Pipelines.cpp
     Pipelines.h
     Scene.cpp
@@ -31,6 +37,8 @@ add_library(vkr_src
     StringHash.h
     TransformInstance.cpp
     TransformInstance.h
+    VertexBuffer.cpp
+    VertexBuffer.h
     View.cpp
     View.h
     VmaUsage.cpp

@@ -18,6 +18,7 @@
 #include <thread>
 #include <cassert>
 
+#include <AllocatedBuffer.h>
 #include <CameraInstance.h>
 #include <components/Renderable.h>
 #include <components/Transform.h>
@@ -160,17 +161,10 @@ void Engine::processEvent(const SDL_Event* event) {
     }
 }
 
-void Engine::render(View& view) {
+bool Engine::beginImGuiFrame() {
     if (freezeRendering_) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        return;
+        return false;
     }
-
-    // FIXME: if swapchain becomes invalid (resizeRequested_ true), should we force a resize to the current size?
-    //if (resizeRequested_ && !resizeSwapchain()) {
-    //    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    //    return;
-    //}
 
     // ImGui new frame.
     ImGui_ImplVulkan_NewFrame();
@@ -194,10 +188,28 @@ void Engine::render(View& view) {
     }
     ImGui::End();
 
+    return true;
+}
+
+void Engine::endImGuiFrame() {
     // Tell ImGui to calculate internal draw structures.
     ImGui::Render();
+}
+
+bool Engine::render(View& view) {
+    if (freezeRendering_) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        return false;
+    }
+
+    if (resizeRequested_ && !resizeSwapchain(swapchainExtent_.width, swapchainExtent_.height)) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        return false;
+    }
 
     draw(view);
+
+    return true;
 }
 
 void Engine::cleanup() {
@@ -268,27 +280,29 @@ VmaAllocator Engine::getAllocator() const {
     return allocator_;
 }
 
+vk::Extent2D Engine::getWindowExtent() const {
+    return windowExtent_;
+}
+
 GPUMeshBuffers Engine::uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices) {
     const size_t vertexBufferSize = vertices.size() * sizeof(Vertex);
     const size_t indexBufferSize = indices.size() * sizeof(uint32_t);
 
     GPUMeshBuffers newSurface;
 
-    newSurface.vertexBuffer = createBuffer(vertexBufferSize, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eShaderDeviceAddress,
+    newSurface.vertexBuffer = VertexBuffer(device_, vertexBufferSize, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eShaderDeviceAddress,
         VMA_MEMORY_USAGE_GPU_ONLY);
 
-    newSurface.vertexBufferAddress = device_.getBufferAddress({ .buffer = newSurface.vertexBuffer.buffer });
-
-    newSurface.indexBuffer = createBuffer(indexBufferSize, vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst,
+    newSurface.indexBuffer = IndexBuffer(indexBufferSize, vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst,
         VMA_MEMORY_USAGE_GPU_ONLY);    // FIXME: vma flag is deprecated.
 
-    AllocatedBuffer staging = createBuffer(vertexBufferSize + indexBufferSize, vk::BufferUsageFlagBits::eTransferSrc, VMA_MEMORY_USAGE_CPU_ONLY);
+    AllocatedBuffer staging(vertexBufferSize + indexBufferSize, vk::BufferUsageFlagBits::eTransferSrc, VMA_MEMORY_USAGE_CPU_ONLY);
 
-    void* data = staging.info.pMappedData;
+    void* data = staging.getInfo().pMappedData;
 
-    memcpy(data, vertices.data(), vertexBufferSize);
+    std::memcpy(data, vertices.data(), vertexBufferSize);
 
-    memcpy(static_cast<char*>(data) + vertexBufferSize, indices.data(), indexBufferSize);
+    std::memcpy(static_cast<char*>(data) + vertexBufferSize, indices.data(), indexBufferSize);
 
     immediateSubmit([vertexBufferSize,indexBufferSize,&staging,&newSurface](vk::CommandBuffer cmd) {
         vk::BufferCopy vertexCopy = {
@@ -296,17 +310,17 @@ GPUMeshBuffers Engine::uploadMesh(std::span<uint32_t> indices, std::span<Vertex>
             .dstOffset = 0,
             .size = vertexBufferSize
         };
-        cmd.copyBuffer(staging.buffer, newSurface.vertexBuffer.buffer, 1, &vertexCopy);
+        cmd.copyBuffer(staging.getBuffer(), newSurface.vertexBuffer.getBuffer(), 1, &vertexCopy);
 
         vk::BufferCopy indexCopy = {
             .srcOffset = vertexBufferSize,
             .dstOffset = 0,
             .size = indexBufferSize
         };
-        cmd.copyBuffer(staging.buffer, newSurface.indexBuffer.buffer, 1, &indexCopy);
+        cmd.copyBuffer(staging.getBuffer(), newSurface.indexBuffer.getBuffer(), 1, &indexCopy);
     });
 
-    staging.clear(allocator_);
+    staging.clear();
 
     return newSurface;
 }
@@ -376,6 +390,8 @@ void Engine::initVulkan() {
     allocatorInfo.instance = *instance_;
     allocatorInfo.vulkanApiVersion = vulkanApiVersion;
     vmaCreateAllocator(&allocatorInfo, &allocator_);
+
+    AllocatedBuffer::setAllocator(allocator_);
 }
 
 void Engine::initSwapchain() {
@@ -432,22 +448,16 @@ bool Engine::resizeSwapchain(uint32_t width, uint32_t height) {
 
     destroySwapchain();
 
-    /*int width = 0, height = 0;
-    SDL_GetWindowSize(window_, &width, &height);
-    if (width == 0 || height == 0) {
+    SDL_SetWindowSize(window_, width, height);
+    SDL_SyncWindow(window_);
+    int windowWidth = 0, windowHeight = 0;
+    SDL_GetWindowSize(window_, &windowWidth, &windowHeight);
+    if (windowWidth == 0 || windowHeight == 0) {
         return false;
     }
 
-    windowExtent_.width = width;
-    windowExtent_.height = height;*/
-
-    SDL_SetWindowSize(window_, width, height);
-    SDL_SyncWindow(window_);
-    int w = 0, h = 0;
-    if (SDL_GetWindowSize(window_, &w, &h)) {
-        windowExtent_.width = w;
-        windowExtent_.height = h;
-    }
+    windowExtent_.width = windowWidth;
+    windowExtent_.height = windowHeight;
 
     createSwapchain(width, height);
     if (drawImageDescriptors_ != nullptr) {
@@ -726,39 +736,39 @@ void Engine::initDefaultData() {
 
     rectangle = uploadMesh(rect_indices,rect_vertices);*/
 
-    //3 default textures, white, grey, black. 1 pixel each
+    // Three default textures, white, grey, and black. 1 pixel each.
     uint32_t white = glm::packUnorm4x8(glm::vec4(1, 1, 1, 1));
-    whiteImage_ = createImage((void*)&white, vk::Extent3D{ 1, 1, 1 }, vk::Format::eR8G8B8A8Unorm,
+    whiteImage_ = createImage(static_cast<void*>(&white), vk::Extent3D{ 1, 1, 1 }, vk::Format::eR8G8B8A8Unorm,
         vk::ImageUsageFlagBits::eSampled);
 
     uint32_t grey = glm::packUnorm4x8(glm::vec4(0.66f, 0.66f, 0.66f, 1));
-    greyImage_ = createImage((void*)&grey, vk::Extent3D{ 1, 1, 1 }, vk::Format::eR8G8B8A8Unorm,
+    greyImage_ = createImage(static_cast<void*>(&grey), vk::Extent3D{ 1, 1, 1 }, vk::Format::eR8G8B8A8Unorm,
         vk::ImageUsageFlagBits::eSampled);
 
     uint32_t black = glm::packUnorm4x8(glm::vec4(0, 0, 0, 0));
-    blackImage_ = createImage((void*)&black, vk::Extent3D{ 1, 1, 1 }, vk::Format::eR8G8B8A8Unorm,
+    blackImage_ = createImage(static_cast<void*>(&black), vk::Extent3D{ 1, 1, 1 }, vk::Format::eR8G8B8A8Unorm,
         vk::ImageUsageFlagBits::eSampled);
 
-    //checkerboard image
+    // Checkerboard texture.
     uint32_t magenta = glm::packUnorm4x8(glm::vec4(1, 0, 1, 1));
-    std::array<uint32_t, 16 *16 > pixels; //for 16x16 checkerboard texture
-    for (int x = 0; x < 16; x++) {
-        for (int y = 0; y < 16; y++) {
-            pixels[y*16 + x] = ((x % 2) ^ (y % 2)) ? magenta : black;
+    std::array<uint32_t, 16 * 16> pixels;
+    for (int x = 0; x < 16; ++x) {
+        for (int y = 0; y < 16; ++y) {
+            pixels[y * 16 + x] = (x % 2 != y % 2) ? magenta : black;
         }
     }
-    errorCheckerboardImage_ = createImage(pixels.data(), vk::Extent3D{16, 16, 1}, vk::Format::eR8G8B8A8Unorm,
+    errorCheckerboardImage_ = createImage(pixels.data(), vk::Extent3D{ 16, 16, 1 }, vk::Format::eR8G8B8A8Unorm,
         vk::ImageUsageFlagBits::eSampled);
 
-    vk::SamplerCreateInfo sampl = {
+    defaultSamplerNearest_ = device_.createSampler({
         .magFilter = vk::Filter::eNearest,
         .minFilter = vk::Filter::eNearest
-    };
-    defaultSamplerNearest_ = device_.createSampler(sampl);
+    });
 
-    sampl.magFilter = vk::Filter::eLinear;
-    sampl.minFilter = vk::Filter::eLinear;
-    defaultSamplerLinear_ = device_.createSampler(sampl);
+    defaultSamplerLinear_ = device_.createSampler({
+        .magFilter = vk::Filter::eLinear,
+        .minFilter = vk::Filter::eLinear
+    });
 
     DescriptorWriter writer;
     writer.writeImage(0, errorCheckerboardImage_.imageView, defaultSamplerNearest_, vk::ImageLayout::eShaderReadOnlyOptimal, vk::DescriptorType::eCombinedImageSampler);
@@ -994,10 +1004,10 @@ void Engine::drawGeometry(vk::CommandBuffer cmd, View& view) {
         } else {
             pushConstants.worldMatrix = viewProjection;
         }
-        pushConstants.vertexBuffer = renderable->mesh->meshBuffers.vertexBufferAddress;
+        pushConstants.vertexBuffer = renderable->mesh->meshBuffers.vertexBuffer.getBufferAddress();
 
         cmd.pushConstants(meshPipelineLayout_, vk::ShaderStageFlagBits::eVertex, 0, sizeof(GPUDrawPushConstants), &pushConstants);
-        cmd.bindIndexBuffer(renderable->mesh->meshBuffers.indexBuffer.buffer, 0, vk::IndexType::eUint32);
+        cmd.bindIndexBuffer(renderable->mesh->meshBuffers.indexBuffer.getBuffer(), 0, vk::IndexType::eUint32);
 
         cmd.drawIndexed(renderable->mesh->surfaces[0].count, 1, renderable->mesh->surfaces[0].startIndex, 0, 0);
     }
@@ -1057,24 +1067,6 @@ void Engine::immediateSubmit(std::function<void(vk::CommandBuffer cmd)>&& functi
     VK_CHECK(device_.waitForFences(*immFence_, vk::True, std::numeric_limits<uint64_t>::max()));
 }
 
-AllocatedBuffer Engine::createBuffer(size_t allocSize, vk::BufferUsageFlags usage, VmaMemoryUsage memoryUsage) {
-    vk::BufferCreateInfo bufferInfo = {
-        .size = allocSize,
-        .usage = usage
-    };
-
-    VmaAllocationCreateInfo allocInfo = {};
-    allocInfo.usage = memoryUsage;
-    allocInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
-
-    AllocatedBuffer newBuffer;
-    VkBuffer buffer = {};
-    VK_CHECK(vmaCreateBuffer(allocator_, &*bufferInfo, &allocInfo, &buffer, &newBuffer.allocation, &newBuffer.info));
-    newBuffer.buffer = buffer;
-
-    return newBuffer;
-}
-
 AllocatedImage Engine::createImage(vk::Extent3D size, vk::Format format, vk::ImageUsageFlags usage, bool mipmapped) {
     AllocatedImage newImage;
     newImage.imageFormat = format;
@@ -1130,9 +1122,9 @@ AllocatedImage Engine::createImage(vk::Extent3D size, vk::Format format, vk::Ima
 
 AllocatedImage Engine::createImage(void* data, vk::Extent3D size, vk::Format format, vk::ImageUsageFlags usage, bool mipmapped) {
     size_t dataSize = size.depth * size.width * size.height * 4;
-    AllocatedBuffer uploadbuffer = createBuffer(dataSize, vk::BufferUsageFlagBits::eTransferSrc, VMA_MEMORY_USAGE_CPU_TO_GPU);
+    AllocatedBuffer uploadbuffer(dataSize, vk::BufferUsageFlagBits::eTransferSrc, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
-    memcpy(uploadbuffer.info.pMappedData, data, dataSize);
+    std::memcpy(uploadbuffer.getInfo().pMappedData, data, dataSize);
 
     AllocatedImage newImage = createImage(size, format, usage | vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eTransferSrc, mipmapped);
 
@@ -1152,12 +1144,12 @@ AllocatedImage Engine::createImage(void* data, vk::Extent3D size, vk::Format for
             .imageExtent = size
         };
 
-        cmd.copyBufferToImage(uploadbuffer.buffer, newImage.image, vk::ImageLayout::eTransferDstOptimal, 1, &copyRegion);
+        cmd.copyBufferToImage(uploadbuffer.getBuffer(), newImage.image, vk::ImageLayout::eTransferDstOptimal, 1, &copyRegion);
 
         transitionImage(cmd, newImage.image, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal);
     });
 
-    uploadbuffer.clear(allocator_);
+    uploadbuffer.clear();
 
     return newImage;
 }

@@ -91,7 +91,7 @@ private:
 
     struct ParentInfo {
         EntityId parent;
-        std::vector<EntityId> children;    // Could improve this using small vector optimization.
+        std::vector<EntityId> children;    // FIXME: Could improve this using small vector optimization.
     };
 
     // The entity id is composed of an index (into the vector) and serial. When

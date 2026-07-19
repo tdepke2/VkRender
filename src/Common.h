@@ -6,7 +6,10 @@
 #include <VmaUsage.h>
 
 #include <glm/mat4x4.hpp>
-#include <glm/vec4.hpp>
+
+#include <IndexBuffer.h>
+#include <VertexBuffer.h>
+
 
 struct AllocatedImage {
     vk::Image image = nullptr;
@@ -24,32 +27,14 @@ struct AllocatedImage {
     }
 };
 
-struct AllocatedBuffer {
-    vk::Buffer buffer = nullptr;
-    VmaAllocation allocation = nullptr;
-    VmaAllocationInfo info;
 
-    // FIXME: same issue here
-    void clear(VmaAllocator allocator) {
-        if (buffer) {
-            vmaDestroyBuffer(allocator, buffer, allocation);
-        }
-    }
-};
 
-struct Vertex {
-    glm::vec3 position;
-    float uv_x;
-    glm::vec3 normal;
-    float uv_y;
-    glm::vec4 color;
-};
+
 
 // Holds the resources needed for a mesh.
 struct GPUMeshBuffers {
-    AllocatedBuffer indexBuffer;
-    AllocatedBuffer vertexBuffer;
-    vk::DeviceAddress vertexBufferAddress;
+    IndexBuffer indexBuffer;
+    VertexBuffer vertexBuffer;
 };
 
 // Push constants for our mesh object draws.

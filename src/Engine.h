@@ -37,11 +37,14 @@ public:
 
     void init();
     void processEvent(const SDL_Event* event);
-    void render(View& view);
+    bool beginImGuiFrame();
+    void endImGuiFrame();
+    bool render(View& view);
     void cleanup();
 
     const vk::raii::Device& getDevice() const;
     VmaAllocator getAllocator() const;
+    vk::Extent2D getWindowExtent() const;
 
     GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
 
