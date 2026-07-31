@@ -10,7 +10,7 @@ public:
 
     void clear();
 
-    vk::raii::Pipeline buildPipeline(const vk::raii::Device& device);
+    vk::raii::Pipeline buildPipeline(const vk::raii::Device& device) const;
 
     void setPipelineLayout(vk::PipelineLayout pipelineLayout);
 

@@ -49,7 +49,7 @@ void PipelineBuilder::clear() {
     colorAttachmentformat_ = vk::Format::eR8G8B8A8Unorm;
 }
 
-vk::raii::Pipeline PipelineBuilder::buildPipeline(const vk::raii::Device& device) {
+vk::raii::Pipeline PipelineBuilder::buildPipeline(const vk::raii::Device& device) const {
     vk::PipelineViewportStateCreateInfo viewportState = {
         .viewportCount = 1,
         .scissorCount = 1,

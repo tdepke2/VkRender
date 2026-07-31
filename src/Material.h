@@ -1,32 +1,55 @@
 #pragma once
 
+#include <components/Renderable.h>
 #include <Pipelines.h>
 
+#include <array>
 #include <memory>
 #include <string>
 #include <string_view>
 #include <vulkan/vulkan_raii.hpp>
 
+class Material;
+
 class MaterialInstance {
 public:
-    MaterialInstance(std::string_view name, vk::raii::Pipeline&& pipeline);
     const std::string& getName() const;
-    const vk::Pipeline& getPipeline() const;
+    const Material& getMaterial() const;
 
 private:
+    MaterialInstance(std::string_view name, const Material& material);
+
     std::string name_;
-    vk::raii::Pipeline pipeline_ = nullptr;
+    const Material* material_;
+
+    friend Material;
 };
 
 class Material {
 public:
-    Material(std::string_view name, const vk::PipelineLayout& layout);
-    virtual ~Material() = default;
+    Material(std::string_view name, const vk::raii::Device& device, const vk::raii::PipelineLayout& layout);
 
+    const std::string& getName() const;
+    const vk::raii::Pipeline& getPipeline(components::Renderable::PrimitiveType primitiveType) const;
+
+    void buildPipeline(components::Renderable::PrimitiveType primitiveType) const;
     std::unique_ptr<MaterialInstance> createInstance(std::string_view name = "") const;
+
 protected:
-    PipelineBuilder builder_;
+    mutable PipelineBuilder builder_;
 
 private:
     std::string name_;
+    const vk::raii::Device* device_;
+    mutable std::array<vk::raii::Pipeline, components::Renderable::count> pipelines_ = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
+};
+
+
+
+class GltfMetallicRoughness : public Material {    // FIXME: store gltf mats in the gltf loader class?
+    GltfMetallicRoughness(std::string_view name, const vk::raii::Device& device, const vk::raii::PipelineLayout& layout, vk::Format colorAttachmentFormat, vk::Format depthFormat);
+
+private:
+    vk::raii::ShaderModule triangleVertexShader_ = nullptr;
+    vk::raii::ShaderModule triangleFragShader_ = nullptr;
 };
